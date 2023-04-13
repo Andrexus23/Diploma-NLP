@@ -1,0 +1,101 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "description": "NLP-microservice",
+    "version": "1.0.0",
+    "title": "NLP-microservice"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000/api/docs/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "train",
+      "description": "train word2vec on text dataset"
+    }
+  ],
+  "paths": {
+    "/train/uploadDataset": {
+      "post": {
+        "tags": [
+          "Upload train dataset"
+        ],
+        "summary": "Upload dataset for training word2vec model",
+        "description": "Upload dataset for training word2vec model",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "file",
+                    "format": "text/plain"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/train/w2v": {
+      "get": {
+        "tags": [
+          "Train word2vec"
+        ],
+        "summary": "Train word2vec",
+        "description": "Train word2vec",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/match2texts/w2v": {
+      "post": {
+        "tags": [
+          "Match two texts with w2v"
+        ],
+        "description": "Match two texts with w2v",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "first_text": {
+                    "type": "string",
+                    "format": "text/plain"
+                  },
+                  "second_text": {
+                    "type": "string",
+                    "format": "text/plain"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    }
+  }
+}
