@@ -17,6 +17,7 @@ API_URL = '/static/swagger.json'
 TRAIN_PATH = './posted/train.json'
 PREPROCESSED_PATH = './nlp/data/preprocessed_documents.json'
 MODELS_PATH = "nlp/models/"
+ALLOWED_MODELS = ["w2v", "fast_text"]
 
 app = Flask(__name__)
 
@@ -44,8 +45,8 @@ def upload_train_data():
     return {"Error": "Couldn't load file"}
 
 
-@app.route("/api/docs/train/w2v", methods=['GET'])
-def train_w2v():
+@app.route("/api/docs/train/<string:name>", methods=['GET'])
+def train_model(name):
     res = None
     modelResearcher = nlp.ModelResearcher()
     preprocessed_texts = None
@@ -59,9 +60,11 @@ def train_w2v():
         res = f'Preprocessing time: {end - start:0.4f} secs'
         print(res)
 
+    if name not in ALLOWED_MODELS:
+        return jsonify({"Error": "Incorrect model name"})
     try:
         start = time.perf_counter()
-        modelResearcher.train(preprocessed_texts, model="w2v", model_path=MODELS_PATH)
+        modelResearcher.train(preprocessed_texts, model=name, model_path=MODELS_PATH)
         end = time.perf_counter()
         res = f'Model training time: {end - start:0.4f} secs'
         return jsonify({"Success": res})
@@ -70,23 +73,26 @@ def train_w2v():
         return jsonify({"Error": "Cannot train model"})
 
 
-@app.route("/api/docs/match2texts/w2v", methods=['POST'])
-def match2texts_w2v():
+@app.route("/api/docs/match2texts/<string:name>", methods=['POST'])
+def match2texts(name):
+    if name not in ALLOWED_MODELS:
+        print(name, ALLOWED_MODELS)
+        return jsonify({"Error": "No such model in service"})
     modelResearcher = nlp.ModelResearcher()
     try:
         values = request.values.values()
         first = next(values)
         second = next(values)
-        exists = modelResearcher.load(MODELS_PATH + 'w2v')
+        exists = modelResearcher.load(MODELS_PATH + name)
         if not exists:
-            return {"Error": "No pretrained w2v model: you should train it"}
+            return {"Error": "No model: you should train or download it"}
         sim = modelResearcher.predict_sim_two_texts(first, second)
         print(sim)
         return jsonify({"Texts' similarity": str(sim)})
     except Exception as e:
         logging.error(traceback.format_exc())
+        return jsonify({"Error": "Something went wrong"})
 
-    return jsonify({"Error": "Something went wrong"})
 
 
 if __name__ == '__main__':

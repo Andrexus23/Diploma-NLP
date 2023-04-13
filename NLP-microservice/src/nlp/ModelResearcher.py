@@ -86,12 +86,12 @@ class ModelResearcher:
         except FileNotFoundError:
             return False
 
-    def predict_sim_two_texts(self, text1, text2):
+    def predict_sim_two_texts(self, text1, text2, round_number=4):
         if self.model:
             first = preprocess(text1, punctuation_marks, stop_words, morph)
             second = preprocess(text2, punctuation_marks, stop_words, morph)
             sim = self.model.wv.n_similarity(first, second)
-            return sim
+            return round(sim, round_number)
         return None
 
     def preprocess_and_save(self, data_df: pd.DataFrame, path, text_field='text') -> pd.DataFrame:
@@ -121,13 +121,13 @@ class ModelResearcher:
         if model == "w2v":
             train_part = data_df['preprocessed_texts']
             self.model = gensim.models.Word2Vec(sentences=train_part, min_count=5, vector_size=50, epochs=10)
-            self.model.save(model_path + 'w2v')
+            self.model.save(model_path + model)
         elif model == "fast_text":
             train_part = data_df['preprocessed_texts'].tolist()
-            self.model = gensim.models.FastText(vector_size=50, min_count=5)
-            self.model.build_vocab(corpus_iterable=train_part)
-            self.model.train(corpus_iterable=train_part, total_examples=len(train_part), epochs=10)
-            self.model.save(model_path + 'fastText')
+            self.model = gensim.models.FastText(sentences=train_part, min_count=5, vector_size=50, epochs=10)
+            # self.model.build_vocab(corpus_iterable=train_part)
+            # self.model.train(corpus_iterable=train_part, total_examples=len(train_part), epochs=10)
+            self.model.save(model_path + model)
         return
 
     def predict_sentences_similarity(self, sentences_1: pd.Series, sentences_2: pd.Series):

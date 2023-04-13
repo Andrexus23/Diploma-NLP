@@ -10,20 +10,15 @@
       "url": "http://localhost:5000/api/docs/"
     }
   ],
-  "tags": [
-    {
-      "name": "train",
-      "description": "train word2vec on text dataset"
-    }
-  ],
+
   "paths": {
     "/train/uploadDataset": {
       "post": {
         "tags": [
           "Upload train dataset"
         ],
-        "summary": "Upload dataset for training word2vec model",
-        "description": "Upload dataset for training word2vec model",
+        "summary": "Upload dataset for training word2vec/fastText model",
+        "description": "Upload dataset for training word2vec/fastText model",
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -51,13 +46,23 @@
         }
       }
     },
-    "/train/w2v": {
+    "/train/{modelId}": {
       "get": {
         "tags": [
-          "Train word2vec"
+          "Train word2vec/fastText"
         ],
-        "summary": "Train word2vec",
-        "description": "Train word2vec",
+        "summary": "Train word2vec/fastText",
+        "description": "Train word2vec/fastText",
+        "parameters": [{
+          "name": "modelId",
+          "in": "path",
+          "description": "model name: (w2v / fast_text)",
+          "required": true,
+          "schema": {
+              "type": "string",
+              "format": "string"
+            }
+        }],
         "responses": {
           "200": {
             "description": "Success"
@@ -65,12 +70,22 @@
         }
       }
     },
-    "/match2texts/w2v": {
+    "/match2texts/{modelId}": {
       "post": {
         "tags": [
-          "Match two texts with w2v"
+          "Match two texts"
         ],
-        "description": "Match two texts with w2v",
+        "description": "Match two texts",
+        "parameters": [{
+          "name": "modelId",
+          "in": "path",
+          "description": "model name: (w2v / fast_text)",
+          "required": true,
+          "schema": {
+              "type": "string",
+              "format": "string"
+            }
+        }],
         "requestBody": {
           "content": {
             "multipart/form-data": {
