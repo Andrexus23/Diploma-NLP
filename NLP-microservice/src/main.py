@@ -1,7 +1,10 @@
 import logging
+import os
 import time
 import traceback
-from flask import Flask, jsonify, request
+from io import StringIO
+
+from flask import Flask, jsonify, request, make_response, send_from_directory, send_file
 from flasgger import Swagger
 import pandas as pd
 import numpy as np
@@ -12,12 +15,14 @@ from urllib.parse import unquote
 from flask_swagger_ui import get_swaggerui_blueprint
 import nlp.ModelResearcher as nlp
 
+
 SWAGGER_URL = '/api/docs'  # URL для размещения SWAGGER_UI
 API_URL = '/static/swagger.json'
 TRAIN_PATH = './posted/train.json'
 PREPROCESSED_PATH = './nlp/data/preprocessed_documents.json'
 MODELS_PATH = "nlp/models/"
 ALLOWED_MODELS = ["w2v", "fast_text"]
+UPLOADED = './uploaded'
 
 app = Flask(__name__)
 
@@ -76,7 +81,6 @@ def train_model(name):
 @app.route("/api/docs/match2texts/<string:name>", methods=['POST'])
 def match2texts(name):
     if name not in ALLOWED_MODELS:
-        print(name, ALLOWED_MODELS)
         return jsonify({"Error": "No such model in service"})
     modelResearcher = nlp.ModelResearcher()
     try:
@@ -93,6 +97,27 @@ def match2texts(name):
         logging.error(traceback.format_exc())
         return jsonify({"Error": "Something went wrong"})
 
+
+@app.route("/api/docs/maximize-f1-score/<string:name>", methods=['POST'])
+def maximize_f1_score(name):
+    if name not in ALLOWED_MODELS:
+        return jsonify({"Error": "No such model in service"})
+    modelResearcher = nlp.ModelResearcher()
+    exists = modelResearcher.load(MODELS_PATH + name)
+    if not exists:
+        return {"Error": "No model: you should train or download it"}
+    dataset = request.files['file']
+    filename = UPLOADED + "/" + dataset.filename
+    dataset.save(filename)
+    dataset.close()
+    try:
+        df = pd.read_json(filename)
+        df = modelResearcher.preprocess_and_save_pairs(df, None, 'text_rp', 'text_proj')
+        res = modelResearcher.get_optimal_threshold(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df, step=0.02)
+        return res
+    except Exception as e:
+        logging.error(traceback.format_exc())
+        return jsonify({"Error": "Something went wrong"})
 
 
 if __name__ == '__main__':

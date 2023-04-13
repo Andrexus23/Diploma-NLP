@@ -18,7 +18,7 @@
           "Upload train dataset"
         ],
         "summary": "Upload dataset for training word2vec/fastText model",
-        "description": "Upload dataset for training word2vec/fastText model",
+        "description": "Upload dataset for training word2vec/fastText model.",
         "requestBody": {
           "content": {
             "multipart/form-data": {
@@ -100,6 +100,49 @@
                     "type": "string",
                     "format": "text/plain"
                   }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/maximize-f1-score/{modelId}": {
+      "post": {
+        "tags": [
+          "Maximize F1-score"
+        ],
+        "description": "Maximize F1-score for selected model",
+        "parameters": [{
+          "name": "modelId",
+          "in": "path",
+          "description": "model name: (w2v / fast_text)",
+          "required": true,
+          "schema": {
+              "type": "string",
+              "format": "string"
+            }
+        }],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "file",
+                    "format": "text/plain"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "style": "form"
                 }
               }
             }

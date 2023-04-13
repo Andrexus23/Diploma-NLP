@@ -1,7 +1,11 @@
+import base64
 import json
 import pandas as pd
 import pymorphy2
 import nltk
+from flask import make_response
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+from matplotlib.figure import Figure
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 import gensim
@@ -21,7 +25,6 @@ import matplotlib.pyplot as plt
 
 nltk.download('punkt')
 nltk.download('stopwords')
-
 
 
 def preprocess(text: str, stop_words, punctuation_marks, morph):
@@ -171,14 +174,25 @@ class ModelResearcher:
             sim = self.predict_sentences_similarity(sentences_1, sentences_2)
             for i in steps:
                 threshold = calc_f1_score(sim, df, h)
-                print(h, threshold)
                 thresholds.append(threshold)
                 if threshold > max_:
                     max_ = threshold
                     h_max = h
                 h += step
-            plt.plot(steps, thresholds)
-            plt.figure(figsize=(10, 3))
-            plt.show()
 
-            return h_max
+            fig = plt.figure(figsize=(10, 8))
+            plt.grid(True)
+            plt.xlabel("Cutoff")
+            plt.ylabel("F1-score")
+            plt.plot(steps, thresholds)
+            plt.plot(h_max, max_, 'r*')
+
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png')
+            encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
+            image_url = f"data:image/png;base64,{encoded_img}"
+            return {
+                "cutoff": h_max,
+                "f1-score": max_,
+                "image": image_url
+            }
