@@ -154,6 +154,19 @@
           }
         }
       }
+    },
+    "/get-list-of-allowed-models": {
+      "get": {
+        "tags": [
+          "Get list of allowed models"
+        ],
+        "description": "Get list of allowed models",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
     }
   }
 }

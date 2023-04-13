@@ -15,7 +15,6 @@ from urllib.parse import unquote
 from flask_swagger_ui import get_swaggerui_blueprint
 import nlp.ModelResearcher as nlp
 
-
 SWAGGER_URL = '/api/docs'  # URL для размещения SWAGGER_UI
 API_URL = '/static/swagger.json'
 TRAIN_PATH = './posted/train.json'
@@ -113,11 +112,17 @@ def maximize_f1_score(name):
     try:
         df = pd.read_json(filename)
         df = modelResearcher.preprocess_and_save_pairs(df, None, 'text_rp', 'text_proj')
-        res = modelResearcher.get_optimal_threshold(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df, step=0.02)
+        res = modelResearcher.get_optimal_threshold(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
+                                                    step=0.02)
         return res
     except Exception as e:
         logging.error(traceback.format_exc())
         return jsonify({"Error": "Something went wrong"})
+
+
+@app.route("/api/docs/get-list-of-allowed-models", methods=['GET'])
+def get_list_models():
+    return jsonify(ALLOWED_MODELS)
 
 
 if __name__ == '__main__':
