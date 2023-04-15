@@ -90,6 +90,8 @@ def match2texts(name):
         if not exists:
             return {"Error": "No model: you should train or download it"}
         sim = modelResearcher.predict_sim_two_texts(first, second)
+        if sim < 0:
+            sim = 0
         print(sim)
         return jsonify({"Texts' similarity": str(sim)})
     except Exception as e:

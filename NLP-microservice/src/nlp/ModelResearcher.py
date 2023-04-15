@@ -93,6 +93,7 @@ class ModelResearcher:
         if self.model:
             first = preprocess(text1, punctuation_marks, stop_words, morph)
             second = preprocess(text2, punctuation_marks, stop_words, morph)
+            print(first, second)
             sim = self.model.wv.n_similarity(first, second)
             return round(sim, round_number)
         return None
@@ -126,7 +127,7 @@ class ModelResearcher:
             self.model = gensim.models.Word2Vec(sentences=train_part, min_count=5, vector_size=50, epochs=10)
             self.model.save(model_path + model)
         elif model == "fast_text":
-            train_part = data_df['preprocessed_texts'].tolist()
+            train_part = data_df['preprocessed_texts']
             self.model = gensim.models.FastText(sentences=train_part, min_count=5, vector_size=50, epochs=10)
             # self.model.build_vocab(corpus_iterable=train_part)
             # self.model.train(corpus_iterable=train_part, total_examples=len(train_part), epochs=10)
