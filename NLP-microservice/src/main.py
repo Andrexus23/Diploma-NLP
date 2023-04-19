@@ -3,7 +3,6 @@ import os
 import time
 import traceback
 from io import StringIO
-
 from flask import Flask, jsonify, request, make_response, send_from_directory, send_file
 from flasgger import Swagger
 import pandas as pd
@@ -13,14 +12,25 @@ import json
 from flasgger.utils import swag_from
 from urllib.parse import unquote
 from flask_swagger_ui import get_swaggerui_blueprint
-import nlp.ModelResearcher as nlp
+from sentence_transformers import SentenceTransformer
+
+import nlp.Common as Common
+import nlp.ModelResearcherGensim as MRGModule
+import nlp.ModelResearcherTransformer as MRTModule
 
 SWAGGER_URL = '/api/docs'  # URL для размещения SWAGGER_UI
 API_URL = '/static/swagger.json'
 TRAIN_PATH = './posted/train.json'
 PREPROCESSED_PATH = './nlp/data/preprocessed_documents.json'
-MODELS_PATH = "nlp/models/"
-ALLOWED_MODELS = ["w2v", "fast_text"]
+MODELS_GENSIM_PATH = "nlp/models/"
+MODELS_TRANSFORMER_PATH = "nlp/models/sentence-transformers/"
+ALLOWED_MODELS_GENSIM = ["w2v",
+                         "fast_text"]
+
+ALLOWED_MODELS_TRANSFORMER = [
+    "rubert-base-cased",
+    "paraphrase-multilingual-MiniLM-L12-v2"]
+
 UPLOADED = './uploaded'
 
 app = Flask(__name__)
@@ -52,23 +62,23 @@ def upload_train_data():
 @app.route("/api/docs/train/<string:name>", methods=['GET'])
 def train_model(name):
     res = None
-    modelResearcher = nlp.ModelResearcher()
+    modelResearcher = MRGModule.ModelResearcherGensim()
     preprocessed_texts = None
     try:
-        preprocessed_texts = nlp.read_json(PREPROCESSED_PATH)
+        preprocessed_texts = Common.read_json(PREPROCESSED_PATH)
     except FileNotFoundError:
         start = time.perf_counter()
-        texts = nlp.read_json(TRAIN_PATH)
-        preprocessed_texts = modelResearcher.preprocess_and_save(texts, PREPROCESSED_PATH)
+        texts = Common.read_json(TRAIN_PATH)
+        preprocessed_texts = Common.preprocess_and_save(texts, PREPROCESSED_PATH)
         end = time.perf_counter()
         res = f'Preprocessing time: {end - start:0.4f} secs'
         print(res)
 
-    if name not in ALLOWED_MODELS:
+    if name not in ALLOWED_MODELS_GENSIM:
         return jsonify({"Error": "Incorrect model name"})
     try:
         start = time.perf_counter()
-        modelResearcher.train(preprocessed_texts, model=name, model_path=MODELS_PATH)
+        modelResearcher.train(preprocessed_texts, model=name, model_path=MODELS_GENSIM_PATH)
         end = time.perf_counter()
         res = f'Model training time: {end - start:0.4f} secs'
         return jsonify({"Success": res})
@@ -79,14 +89,22 @@ def train_model(name):
 
 @app.route("/api/docs/match2texts/<string:name>", methods=['POST'])
 def match2texts(name):
-    if name not in ALLOWED_MODELS:
+    modelResearcher = None
+    path = None
+    if (name not in ALLOWED_MODELS_GENSIM) and \
+            (name not in ALLOWED_MODELS_TRANSFORMER):
         return jsonify({"Error": "No such model in service"})
-    modelResearcher = nlp.ModelResearcher()
+    if name in ALLOWED_MODELS_GENSIM:
+        modelResearcher = MRGModule.ModelResearcherGensim()
+        path = MODELS_GENSIM_PATH + name
+    else:
+        modelResearcher = MRTModule.ModelResearcherTransformer()
+        path = MODELS_TRANSFORMER_PATH + name
     try:
         values = request.values.values()
         first = next(values)
         second = next(values)
-        exists = modelResearcher.load(MODELS_PATH + name)
+        exists = modelResearcher.load(path)
         if not exists:
             return {"Error": "No model: you should train or download it"}
         sim = modelResearcher.predict_sim_two_texts(first, second)
@@ -101,10 +119,19 @@ def match2texts(name):
 
 @app.route("/api/docs/maximize-f1-score/<string:name>", methods=['POST'])
 def maximize_f1_score(name):
-    if name not in ALLOWED_MODELS:
+    if (name not in ALLOWED_MODELS_GENSIM) and \
+            (name not in ALLOWED_MODELS_TRANSFORMER):
         return jsonify({"Error": "No such model in service"})
-    modelResearcher = nlp.ModelResearcher()
-    exists = modelResearcher.load(MODELS_PATH + name)
+
+    if name in ALLOWED_MODELS_GENSIM:
+        modelResearcher = MRGModule.ModelResearcherGensim()
+        path = MODELS_GENSIM_PATH + name
+    else:
+        print('транс')
+        modelResearcher = MRTModule.ModelResearcherTransformer()
+        path = MODELS_TRANSFORMER_PATH + name
+    exists = modelResearcher.load(path)
+
     if not exists:
         return {"Error": "No model: you should train or download it"}
     dataset = request.files['file']
@@ -113,8 +140,12 @@ def maximize_f1_score(name):
     dataset.close()
     try:
         df = pd.read_json(filename)
-        df = modelResearcher.preprocess_and_save_pairs(df, None, 'text_rp', 'text_proj')
-        res = modelResearcher.get_optimal_threshold(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
+        if name in ALLOWED_MODELS_GENSIM:
+            df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
+            res = modelResearcher.maximize_f1_score(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
+                                                    step=0.02)
+        else:
+            res = modelResearcher.maximize_f1_score(df["text_rp"], df["text_proj"], df,
                                                     step=0.02)
         return res
     except Exception as e:
@@ -124,7 +155,7 @@ def maximize_f1_score(name):
 
 @app.route("/api/docs/get-list-of-allowed-models", methods=['GET'])
 def get_list_models():
-    return jsonify(ALLOWED_MODELS)
+    return jsonify(ALLOWED_MODELS_GENSIM + ALLOWED_MODELS_TRANSFORMER)
 
 
 if __name__ == '__main__':
