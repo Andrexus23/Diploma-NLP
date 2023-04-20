@@ -2,6 +2,7 @@ import json
 import re
 
 import nltk
+import numpy as np
 import pandas as pd
 import pymorphy2
 from nltk import sent_tokenize, word_tokenize
@@ -57,7 +58,7 @@ def read_json(path: str):
 
 def get_states(sim, df, match_threshold):
     (TP, FP, FN, TN) = (0, 0, 0, 0)
-
+    print(sim)
     for i in range(len(sim)):
         if df['need_match'][i]:
             if sim[i] >= match_threshold:
@@ -71,6 +72,49 @@ def get_states(sim, df, match_threshold):
                 TN += 1
 
     return TP, FP, FN, TN
+
+
+def get_states_loo(predictions, df):
+    (TP, FP, FN, TN) = (0, 0, 0, 0)
+    print(len(df), len(predictions))
+    for i in range(len(df)):
+        if df['need_match'][i]:
+            if predictions[i]:
+                TP += 1
+            else:
+                FN += 1
+        else:
+            if predictions[i]:
+                FP += 1
+            else:
+                TN += 1
+
+    return TP, FP, FN, TN
+
+
+def max_f1_score_loo(sim, df, step=0.02):
+    threshold = 0
+    thresholds = []
+    max_ = 0
+    step_max_ = 0
+    h = step
+    steps = np.linspace(0, 1, num=int(1 / h))
+    steps = np.round(steps, 2)
+
+    for i in steps:
+        threshold = calc_f1_score(sim, df, h)
+        thresholds.append(threshold)
+        if threshold > max_:
+            max_ = threshold
+            step_max_ = h
+        h += step
+    print(max_, step_max_)
+    return (steps, thresholds, max_, step_max_)
+
+
+def calc_f1_score_loo(calc_states):
+    (TP, FP, FN, TN) = calc_states()
+    return round(float(2 * TP / (2 * TP + FP + FN)), 3)
 
 
 def calc_f1_score(sim, df, match_threshold):

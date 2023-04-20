@@ -15,8 +15,8 @@ from flask_swagger_ui import get_swaggerui_blueprint
 from sentence_transformers import SentenceTransformer
 
 import nlp.Common as Common
-import nlp.ModelResearcherGensim as MRGModule
-import nlp.ModelResearcherTransformer as MRTModule
+import nlp.ModelResearcher as MR
+
 
 SWAGGER_URL = '/api/docs'  # URL для размещения SWAGGER_UI
 API_URL = '/static/swagger.json'
@@ -62,7 +62,7 @@ def upload_train_data():
 @app.route("/api/docs/train/<string:name>", methods=['GET'])
 def train_model(name):
     res = None
-    modelResearcher = MRGModule.ModelResearcherGensim()
+    modelResearcher = MR.ModelResearcher()
     preprocessed_texts = None
     try:
         preprocessed_texts = Common.read_json(PREPROCESSED_PATH)
@@ -94,20 +94,22 @@ def match2texts(name):
     if (name not in ALLOWED_MODELS_GENSIM) and \
             (name not in ALLOWED_MODELS_TRANSFORMER):
         return jsonify({"Error": "No such model in service"})
+    modelResearcher = MR.ModelResearcher()
+    type_ = None
     if name in ALLOWED_MODELS_GENSIM:
-        modelResearcher = MRGModule.ModelResearcherGensim()
         path = MODELS_GENSIM_PATH + name
-    else:
-        modelResearcher = MRTModule.ModelResearcherTransformer()
+        type_ = "gensim"
+    elif name in ALLOWED_MODELS_TRANSFORMER:
         path = MODELS_TRANSFORMER_PATH + name
+        type_ = "transformer"
     try:
         values = request.values.values()
         first = next(values)
         second = next(values)
-        exists = modelResearcher.load(path)
+        exists = modelResearcher.load(path, type_)
         if not exists:
             return {"Error": "No model: you should train or download it"}
-        sim = modelResearcher.predict_sim_two_texts(first, second)
+        sim = modelResearcher.predict_sim_two_texts(first, second, model_name=path,  model_type=type_)
         if sim < 0:
             sim = 0
         print(sim)
@@ -124,13 +126,14 @@ def maximize_f1_score(name):
         return jsonify({"Error": "No such model in service"})
 
     if name in ALLOWED_MODELS_GENSIM:
-        modelResearcher = MRGModule.ModelResearcherGensim()
+        modelResearcher = MR.ModelResearcher()
         path = MODELS_GENSIM_PATH + name
+        type_ = "gensim"
     else:
-        print('транс')
-        modelResearcher = MRTModule.ModelResearcherTransformer()
+        modelResearcher = MR.ModelResearcher()
         path = MODELS_TRANSFORMER_PATH + name
-    exists = modelResearcher.load(path)
+        type_ = "transformer"
+    exists = modelResearcher.load(path, model_type=type_)
 
     if not exists:
         return {"Error": "No model: you should train or download it"}
@@ -143,9 +146,14 @@ def maximize_f1_score(name):
         if name in ALLOWED_MODELS_GENSIM:
             df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
             res = modelResearcher.maximize_f1_score(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
+                                                    model_name=path,
+                                                    model_type="gensim",
+                                                    LOO=True,
                                                     step=0.02)
         else:
             res = modelResearcher.maximize_f1_score(df["text_rp"], df["text_proj"], df,
+                                                    model_name=path,
+                                                    model_type="transformer",
                                                     step=0.02)
         return res
     except Exception as e:

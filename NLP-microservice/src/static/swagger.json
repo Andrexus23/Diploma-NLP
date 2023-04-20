@@ -79,14 +79,13 @@
         "parameters": [{
           "name": "modelId",
           "in": "path",
-          "description": "model name: (w2v / fast_text)",
+          "description": "model name: ",
           "required": true,
           "schema": {
-              "type": "string",
-              "format": "string"
+              "type": "string"
             }
         }],
-        "requestBody": {
+         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
@@ -121,7 +120,7 @@
         "parameters": [{
           "name": "modelId",
           "in": "path",
-          "description": "model name: (w2v / fast_text)",
+          "description": "model name:",
           "required": true,
           "schema": {
               "type": "string",
