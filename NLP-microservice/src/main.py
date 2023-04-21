@@ -154,6 +154,7 @@ def maximize_f1_score(name):
             res = modelResearcher.maximize_f1_score(df["text_rp"], df["text_proj"], df,
                                                     model_name=path,
                                                     model_type="transformer",
+                                                    LOO=True,
                                                     step=0.02)
         return res
     except Exception as e:

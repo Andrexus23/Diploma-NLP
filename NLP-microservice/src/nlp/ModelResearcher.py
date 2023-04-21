@@ -85,7 +85,7 @@ class ModelResearcher:
 
             # sim.sort(key=comp, reverse=True)
             max_sims.append(max(sim, key=comp)['cos_sim'])
-            print(np.round(np.mean(max_sims), round_number))
+            # print(np.round(np.mean(max_sims), round_number))
         return np.round(np.mean(max_sims), round_number)
 
     def predict_sim_two_texts(self, text1, text2, model_name, model_type, round_number=4):
@@ -148,16 +148,16 @@ class ModelResearcher:
 
     def maximize_f1_score(self, sentences_1: pd.Series, sentences_2: pd.Series, df, model_name, model_type, LOO=False,
                           step=0.02):
+        print(model_name, LOO)
         if sentences_1.size != sentences_2.size:
             return None
         else:
             threshold = 0
             thresholds = []
-            max_ = 0
+            f1_score = 0
             h = step
             steps = np.linspace(0, 1, num=int(1 / h))
             steps = np.round(steps, 2)
-            h_max = 0
             sim = []
             if model_type == "gensim":
                 sim = self.predict_sentences_similarity(sentences_1, sentences_2)
@@ -166,45 +166,39 @@ class ModelResearcher:
                     sim += [self.predict_sim_two_texts(sentences_1[i], sentences_2[i], model_name=model_name,
                                                        model_type="transformer")]
 
-            for i in steps:
-                threshold = Common.calc_f1_score(sim, df, h)
-                thresholds.append(threshold)
-                if threshold > max_:
-                    max_ = threshold
-                    h_max = h
-                h += step
+            steps, thresholds, f1_score, cutoff = Common.max_f1_score(sim, df, step=0.02)
+
+            print(f'usual f1-score: {f1_score}')
 
             fig = plt.figure(figsize=(10, 8))
             plt.grid(True)
             plt.xlabel("Cutoff")
             plt.ylabel("F1-score")
             plt.plot(steps, thresholds)
-            plt.plot(h_max, max_, 'r*')
+            plt.plot(cutoff, f1_score, 'r*')
             buf = io.BytesIO()
             fig.savefig(buf, format='png')
             encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
             image_url = f"data:image/png;base64,{encoded_img}"
+
+            res = {}
 
             if LOO:
                 predictions = []
                 for i in range(len(sim)):
                     current_df = df.drop(i).reset_index().drop(labels='index', axis=1)
                     current_sim = sim[:i] + sim[i + 1:]
-                    steps, thresholds, max_, cutoff = Common.max_f1_score_loo(current_sim, current_df)
-                    print(max_, cutoff)
-                    if sim[i] >= cutoff:
+                    steps, thresholds, f1_temp, cutoff_temp = Common.max_f1_score(current_sim, current_df)
+                    print(f1_temp, cutoff_temp)
+                    if sim[i] >= cutoff_temp:
                         predictions.append(True)
                     else:
                         predictions.append(False)
-                    f1_score_loo = Common.calc_f1_score_loo(lambda: Common.get_states_loo(predictions, df))
-                    return {
-                        "cutoff": h_max,
-                        "f1-score_loo": f1_score_loo,
-                        "image": image_url
-                    }
+                f1_score_loo = Common.calc_f1_score_loo(lambda: Common.get_states_loo(predictions, df))
+                print(f1_score, f1_score_loo)
+                res.setdefault("f1-score_loo", f1_score_loo)
 
-            return {
-                "cutoff": h_max,
-                "f1-score": max_,
-                "image": image_url
-            }
+            res.setdefault("cutoff", cutoff)
+            res.setdefault("f1-score", f1_score)
+            res.setdefault("image", image_url)
+            return res

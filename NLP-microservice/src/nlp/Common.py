@@ -58,7 +58,7 @@ def read_json(path: str):
 
 def get_states(sim, df, match_threshold):
     (TP, FP, FN, TN) = (0, 0, 0, 0)
-    print(sim)
+    # print(sim)
     for i in range(len(sim)):
         if df['need_match'][i]:
             if sim[i] >= match_threshold:
@@ -76,7 +76,7 @@ def get_states(sim, df, match_threshold):
 
 def get_states_loo(predictions, df):
     (TP, FP, FN, TN) = (0, 0, 0, 0)
-    print(len(df), len(predictions))
+    # print(len(df), len(predictions))
     for i in range(len(df)):
         if df['need_match'][i]:
             if predictions[i]:
@@ -92,24 +92,22 @@ def get_states_loo(predictions, df):
     return TP, FP, FN, TN
 
 
-def max_f1_score_loo(sim, df, step=0.02):
+def max_f1_score(sim, df, step=0.02):
     threshold = 0
     thresholds = []
-    max_ = 0
-    step_max_ = 0
+    f1_score = 0
+    cutoff = 0
     h = step
     steps = np.linspace(0, 1, num=int(1 / h))
     steps = np.round(steps, 2)
-
     for i in steps:
         threshold = calc_f1_score(sim, df, h)
         thresholds.append(threshold)
-        if threshold > max_:
-            max_ = threshold
-            step_max_ = h
+        if threshold > f1_score:
+            f1_score = threshold
+            cutoff = h
         h += step
-    print(max_, step_max_)
-    return (steps, thresholds, max_, step_max_)
+    return (steps, thresholds, f1_score, cutoff)
 
 
 def calc_f1_score_loo(calc_states):
