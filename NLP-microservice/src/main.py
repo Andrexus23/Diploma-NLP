@@ -201,6 +201,55 @@ def maximize_f1_score_loo(name):
         return jsonify({"Error": "Something went wrong"})
 
 
+@app.route("/api/docs/maximize-f1-score-crossvalid-train-test/<string:name>", methods=['POST'])
+def maximize_f1_score_train_test(name):
+    if (name not in ALLOWED_MODELS_GENSIM) and \
+            (name not in ALLOWED_MODELS_TRANSFORMER):
+        return jsonify({"Error": "No such model in service"})
+
+    if name in ALLOWED_MODELS_GENSIM:
+        modelResearcher = MR.ModelResearcher()
+        path = MODELS_GENSIM_PATH + name
+        type_ = "gensim"
+    else:
+        modelResearcher = MR.ModelResearcher()
+        path = MODELS_TRANSFORMER_PATH + name
+        type_ = "transformer"
+    exists = modelResearcher.load(path, model_type=type_)
+
+    if not exists:
+        return {"Error": "No model: you should train or download it"}
+    dataset = request.files['file']
+    filename = UPLOADED + "/" + dataset.filename
+    dataset.save(filename)
+    dataset.close()
+
+    try:
+        df = pd.read_json(filename)
+        df_train_f1, df_test_f1 = modelResearcher.get_train_test_dfs_for_f1(df)
+        if name in ALLOWED_MODELS_GENSIM:
+            df_train_f1 = modelResearcher.preprocess_and_save_pairs(df_train_f1, 'text_rp', 'text_proj')
+            df_test_f1 = modelResearcher.preprocess_and_save_pairs(df_test_f1, 'text_rp', 'text_proj')
+            res = modelResearcher.maximize_f1_score_train_test(df_train_f1, df_test_f1,
+                                                               model_name=path,
+                                                               model_type="gensim",
+                                                               field_1="preprocessed_text_rp",
+                                                               field_2="preprocessed_text_proj",
+                                                               step=0.02)
+        elif name in ALLOWED_MODELS_TRANSFORMER:
+            res = modelResearcher.maximize_f1_score_train_test(df_train_f1, df_test_f1,
+                                                               model_name=path,
+                                                               model_type="transformer",
+                                                               field_1="text_rp",
+                                                               field_2="text_proj",
+                                                               step=0.02)
+
+        return res
+    except Exception as e:
+        logging.error(traceback.format_exc())
+        return jsonify({"Error": "Something went wrong"})
+
+
 @app.route("/api/docs/get-list-of-allowed-models", methods=['GET'])
 def get_list_models():
     return jsonify(ALLOWED_MODELS_GENSIM + ALLOWED_MODELS_TRANSFORMER)

@@ -220,7 +220,6 @@
                 "type": "object",
                 "properties": {
                   "file": {
-                    "name": "train dataset",
                     "type": "file",
                     "format": "text/plain"
                   }
