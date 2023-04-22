@@ -95,11 +95,11 @@ class ModelResearcher:
             return self.predict_gensim_two_texts(text1, text2, model_name)
 
     def preprocess_and_save_pairs(self, data_df: pd.DataFrame, text_field_1, text_field_2, path=None):
-        data_df['preprocessed_' + text_field_1] = data_df.apply(
-            lambda row: Common.preprocess(row[text_field_1], punctuation_marks, stop_words, morph), axis=1)
-        data_df['preprocessed_' + text_field_2] = data_df.apply(
-            lambda row: Common.preprocess(row[text_field_2], punctuation_marks, stop_words, morph), axis=1)
         data_df_preprocessed = data_df.copy()
+        data_df_preprocessed['preprocessed_' + text_field_1] = data_df_preprocessed.apply(
+            lambda row: Common.preprocess(row[text_field_1], punctuation_marks, stop_words, morph), axis=1)
+        data_df_preprocessed['preprocessed_' + text_field_2] = data_df_preprocessed.apply(
+            lambda row: Common.preprocess(row[text_field_2], punctuation_marks, stop_words, morph), axis=1)
         data_df_preprocessed = data_df_preprocessed.drop(columns=[text_field_1, text_field_2], axis=1)
         data_df_preprocessed.reset_index(drop=True, inplace=True)
         if path is not None:
@@ -293,3 +293,16 @@ class ModelResearcher:
         res.setdefault("image", image_url)
 
         return res
+
+    def match_texts_from_corpus(self, df, model_name, model_type, field_1, field_2):
+        sim = []
+        sentences_1 = df[field_1]
+        sentences_2 = df[field_2]
+        if model_type == "gensim":
+            sim = self.predict_sentences_similarity(sentences_1, sentences_2)
+        else:
+            for i in range(len(sentences_1)):
+                sim += [self.predict_sim_two_texts(sentences_1[i], sentences_2[i], model_name=model_name,
+                                                   model_type="transformer")]
+        sim = [round(i, 3) for i in sim]
+        return sim

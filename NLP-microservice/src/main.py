@@ -223,6 +223,7 @@ def maximize_f1_score_train_test(name):
     filename = UPLOADED + "/" + dataset.filename
     dataset.save(filename)
     dataset.close()
+    res = None
 
     try:
         df = pd.read_json(filename)
@@ -248,6 +249,48 @@ def maximize_f1_score_train_test(name):
     except Exception as e:
         logging.error(traceback.format_exc())
         return jsonify({"Error": "Something went wrong"})
+
+
+@app.route("/api/docs/match_texts_from_corpus/<string:name>", methods=['POST'])
+def match_two_texts_from_corpus(name):
+    if (name not in ALLOWED_MODELS_GENSIM) and \
+            (name not in ALLOWED_MODELS_TRANSFORMER):
+        return jsonify({"Error": "No such model in service"})
+
+    if name in ALLOWED_MODELS_GENSIM:
+        modelResearcher = MR.ModelResearcher()
+        path = MODELS_GENSIM_PATH + name
+        type_ = "gensim"
+    else:
+        modelResearcher = MR.ModelResearcher()
+        path = MODELS_TRANSFORMER_PATH + name
+        type_ = "transformer"
+    exists = modelResearcher.load(path, model_type=type_)
+
+    if not exists:
+        return {"Error": "No model: you should train or download it"}
+    dataset = request.files['file']
+    filename = UPLOADED + "/" + dataset.filename
+    dataset.save(filename)
+    dataset.close()
+    df = pd.read_json(filename)
+    res = None
+    if name in ALLOWED_MODELS_GENSIM:
+        df_preprocessed = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
+        res = modelResearcher.match_texts_from_corpus(df_preprocessed,
+                                                      model_name=path,
+                                                      model_type="gensim",
+                                                      field_1="preprocessed_text_rp",
+                                                      field_2="preprocessed_text_proj")
+
+    elif name in ALLOWED_MODELS_TRANSFORMER:
+        res = modelResearcher.match_texts_from_corpus(df,
+                                                      model_name=path,
+                                                      model_type="transformer",
+                                                      field_1="text_rp",
+                                                      field_2="text_proj")
+    df.insert(loc=4, column='score', value=res)
+    return df.to_json(orient="records", force_ascii=False)
 
 
 @app.route("/api/docs/get-list-of-allowed-models", methods=['GET'])
