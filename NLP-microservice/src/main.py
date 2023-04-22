@@ -17,7 +17,6 @@ from sentence_transformers import SentenceTransformer
 import nlp.Common as Common
 import nlp.ModelResearcher as MR
 
-
 SWAGGER_URL = '/api/docs'  # URL для размещения SWAGGER_UI
 API_URL = '/static/swagger.json'
 TRAIN_PATH = './posted/train.json'
@@ -109,7 +108,7 @@ def match2texts(name):
         exists = modelResearcher.load(path, type_)
         if not exists:
             return {"Error": "No model: you should train or download it"}
-        sim = modelResearcher.predict_sim_two_texts(first, second, model_name=path,  model_type=type_)
+        sim = modelResearcher.predict_sim_two_texts(first, second, model_name=path, model_type=type_)
         if sim < 0:
             sim = 0
         print(sim)
@@ -148,14 +147,54 @@ def maximize_f1_score(name):
             res = modelResearcher.maximize_f1_score(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
                                                     model_name=path,
                                                     model_type="gensim",
-                                                    LOO=True,
                                                     step=0.02)
         else:
             res = modelResearcher.maximize_f1_score(df["text_rp"], df["text_proj"], df,
                                                     model_name=path,
                                                     model_type="transformer",
-                                                    LOO=True,
                                                     step=0.02)
+        print(res)
+        return res
+    except Exception as e:
+        logging.error(traceback.format_exc())
+        return jsonify({"Error": "Something went wrong"})
+
+
+@app.route("/api/docs/maximize-f1-score-crossvalid-loo/<string:name>", methods=['POST'])
+def maximize_f1_score_loo(name):
+    if (name not in ALLOWED_MODELS_GENSIM) and \
+            (name not in ALLOWED_MODELS_TRANSFORMER):
+        return jsonify({"Error": "No such model in service"})
+
+    if name in ALLOWED_MODELS_GENSIM:
+        modelResearcher = MR.ModelResearcher()
+        path = MODELS_GENSIM_PATH + name
+        type_ = "gensim"
+    else:
+        modelResearcher = MR.ModelResearcher()
+        path = MODELS_TRANSFORMER_PATH + name
+        type_ = "transformer"
+    exists = modelResearcher.load(path, model_type=type_)
+
+    if not exists:
+        return {"Error": "No model: you should train or download it"}
+    dataset = request.files['file']
+    filename = UPLOADED + "/" + dataset.filename
+    dataset.save(filename)
+    dataset.close()
+    try:
+        df = pd.read_json(filename)
+        if name in ALLOWED_MODELS_GENSIM:
+            df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
+            res = modelResearcher.maximize_f1_score_loo(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
+                                                        model_name=path,
+                                                        model_type="gensim",
+                                                        step=0.02)
+        else:
+            res = modelResearcher.maximize_f1_score_loo(df["text_rp"], df["text_proj"], df,
+                                                        model_name=path,
+                                                        model_type="transformer",
+                                                        step=0.02)
         return res
     except Exception as e:
         logging.error(traceback.format_exc())

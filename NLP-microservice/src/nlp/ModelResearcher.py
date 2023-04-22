@@ -146,9 +146,8 @@ class ModelResearcher:
             [pd.DataFrame(df_match[len(df_match) // 2:]), pd.DataFrame(df_unmatch[len(df_unmatch) // 2:])], axis=0)
         return df_train_f1, df_test_f1
 
-    def maximize_f1_score(self, sentences_1: pd.Series, sentences_2: pd.Series, df, model_name, model_type, LOO=False,
+    def maximize_f1_score(self, sentences_1: pd.Series, sentences_2: pd.Series, df, model_name, model_type,
                           step=0.02):
-        print(model_name, LOO)
         if sentences_1.size != sentences_2.size:
             return None
         else:
@@ -182,23 +181,79 @@ class ModelResearcher:
             image_url = f"data:image/png;base64,{encoded_img}"
 
             res = {}
-
-            if LOO:
-                predictions = []
-                for i in range(len(sim)):
-                    current_df = df.drop(i).reset_index().drop(labels='index', axis=1)
-                    current_sim = sim[:i] + sim[i + 1:]
-                    steps, thresholds, f1_temp, cutoff_temp = Common.max_f1_score(current_sim, current_df)
-                    print(f1_temp, cutoff_temp)
-                    if sim[i] >= cutoff_temp:
-                        predictions.append(True)
-                    else:
-                        predictions.append(False)
-                f1_score_loo = Common.calc_f1_score_loo(lambda: Common.get_states_loo(predictions, df))
-                print(f1_score, f1_score_loo)
-                res.setdefault("f1-score_loo", f1_score_loo)
-
+            metrics = Common.calc_all(sim, df, cutoff)
             res.setdefault("cutoff", cutoff)
-            res.setdefault("f1-score", f1_score)
+            res.setdefault("f1-score", metrics["f1-score"])
+            res.setdefault("precision", metrics["precision"])
+            res.setdefault("recall", metrics["recall"])
             res.setdefault("image", image_url)
+
             return res
+
+    def maximize_f1_score_loo(self, sentences_1: pd.Series, sentences_2: pd.Series, df, model_name, model_type,
+                              step=0.02):
+        if sentences_1.size != sentences_2.size:
+            return None
+        else:
+            threshold = 0
+            thresholds = []
+            f1_score = 0
+            h = step
+            steps = np.linspace(0, 1, num=int(1 / h))
+            steps = np.round(steps, 2)
+            sim = []
+            if model_type == "gensim":
+                sim = self.predict_sentences_similarity(sentences_1, sentences_2)
+            else:
+                for i in range(len(sentences_1)):
+                    sim += [self.predict_sim_two_texts(sentences_1[i], sentences_2[i], model_name=model_name,
+                                                       model_type="transformer")]
+
+            predictions = []
+            cutoffs = []
+            for i in range(len(sim)):
+                current_df = df.drop(i).reset_index().drop(labels='index', axis=1)
+                current_sim = sim[:i] + sim[i + 1:]
+                steps, thresholds, f1_temp, cutoff_temp = Common.max_f1_score(current_sim, current_df)
+                cutoffs.append(cutoff_temp)
+                print(f1_temp, cutoff_temp)
+                if sim[i] >= cutoff_temp:
+                    predictions.append(True)
+                else:
+                    predictions.append(False)
+
+            cutoff_loo = round(np.mean(cutoffs), 3)
+            f1_score_loo = Common.calc_f1_score_loo(lambda: Common.get_states_loo(predictions, df))
+            # f1_score_From_cutoff = Common.calc_f1_score(sim, df, cutoff_loo)
+            # print(f'cutoff_mean: {cutoff_loo}\n',
+            #       f'f1_score_loo: {f1_score_loo}\n',
+            #       f'f1_score_From_cutoff: {f1_score_From_cutoff}')
+
+            res = {}
+            metrics = Common.calc_all_loo(lambda: Common.get_states_loo(predictions, df))
+            res.setdefault("cutoff", cutoff_loo)
+            res.setdefault("f1-score", metrics["f1-score"])
+            res.setdefault("precision", metrics["precision"])
+            res.setdefault("recall", metrics["recall"])
+            print(res)
+            return res
+
+    def maximize_f1_score_train_test(self, sentences_1: pd.Series, sentences_2: pd.Series, df, model_name, model_type,
+                          step=0.02):
+        # if sentences_1.size != sentences_2.size:
+        #     return None
+        # else:
+        #     threshold = 0
+        #     thresholds = []
+        #     f1_score = 0
+        #     h = step
+        #     steps = np.linspace(0, 1, num=int(1 / h))
+        #     steps = np.round(steps, 2)
+        #     sim = []
+        #     if model_type == "gensim":
+        #         sim = self.predict_sentences_similarity(sentences_1, sentences_2)
+        #     else:
+        #         for i in range(len(sentences_1)):
+        #             sim += [self.predict_sim_two_texts(sentences_1[i], sentences_2[i], model_name=model_name,
+        #                                                model_type="transformer")]
+            return

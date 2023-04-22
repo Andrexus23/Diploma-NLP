@@ -154,6 +154,93 @@
         }
       }
     },
+    "/maximize-f1-score-crossvalid-loo/{modelId}": {
+      "post": {
+        "tags": [
+          "Maximize F1-score: cross-validation Leave One Out"
+        ],
+        "description": "Maximize F1-score for selected model",
+        "parameters": [{
+          "name": "modelId",
+          "in": "path",
+          "description": "model name:",
+          "required": true,
+          "schema": {
+              "type": "string",
+              "format": "string"
+            }
+        }],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "file",
+                    "format": "text/plain"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/maximize-f1-score-crossvalid-train-test/{modelId}": {
+      "post": {
+        "tags": [
+          "Maximize F1-score: cross-validation Train/test"
+        ],
+        "description": "Maximize F1-score for selected model",
+        "parameters": [{
+          "name": "modelId",
+          "in": "path",
+          "description": "model name:",
+          "required": true,
+          "schema": {
+              "type": "string",
+              "format": "string"
+            }
+        }],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "name": "train dataset",
+                    "type": "file",
+                    "format": "text/plain"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
     "/get-list-of-allowed-models": {
       "get": {
         "tags": [

@@ -107,7 +107,7 @@ def max_f1_score(sim, df, step=0.02):
             f1_score = threshold
             cutoff = h
         h += step
-    return (steps, thresholds, f1_score, cutoff)
+    return steps, thresholds, f1_score, round(cutoff, 3)
 
 
 def calc_f1_score_loo(calc_states):
@@ -115,10 +115,29 @@ def calc_f1_score_loo(calc_states):
     return round(float(2 * TP / (2 * TP + FP + FN)), 3)
 
 
+def calc_all_loo(calc_states):
+    (TP, FP, FN, TN) = calc_states()
+    return {
+        "f1-score": round(float(2 * TP / (2 * TP + FP + FN)), 3),
+        "precision": round(float(TP / (TP + FP)), 3),
+        "recall": round(float(TP / (TP + FN)), 3),
+    }
+
 def calc_f1_score(sim, df, match_threshold):
     (TP, FP, FN, TN) = get_states(sim, df, match_threshold)
     #     print(TP, FP, FN, TN)
     return round(float(2 * TP / (2 * TP + FP + FN)), 3)
+
+
+def calc_all(sim, df, match_threshold):
+    (TP, FP, FN, TN) = get_states(sim, df, match_threshold)
+    return {
+        "f1-score": round(float(2 * TP / (2 * TP + FP + FN)), 3),
+        "precision": round(float(TP / (TP + FP)), 3),
+        "recall": round(float(TP / (TP + FN)), 3),
+    }
+
+
 
 
 def calc_accuracy(sim, df, match_threshold):
