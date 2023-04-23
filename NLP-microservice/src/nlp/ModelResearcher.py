@@ -25,6 +25,9 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 from src.nlp import Common
+from redis import StrictRedis
+from redis_cache import RedisCache
+from functools import lru_cache
 
 nltk.download('punkt')
 nltk.download('stopwords')
@@ -33,6 +36,8 @@ punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
 model_types = ["transformer", "gensim"]
+
+model_global = None
 
 
 class ModelResearcher:
@@ -52,47 +57,39 @@ class ModelResearcher:
             print(e)
             return False
 
-    def predict_gensim_two_texts(self, text1, text2, model_name, round_number=4):
-        self.model = self.models[model_name]
-        first = Common.preprocess(text1, punctuation_marks, stop_words, morph)
-        second = Common.preprocess(text2, punctuation_marks, stop_words, morph)
-        print(first, second)
-        sim = self.model.wv.n_similarity(first, second)
-        return round(sim, round_number)
+    @staticmethod
+    @lru_cache(maxsize=5000)
+    def __predict_transfomer_two_texts__(text_1, text_2, round_number=4):
+        if model_global is not None:
+            sentences_rp = Common.sent_preprocess(text_1)
+            sentences_proj = Common.sent_preprocess(text_2)
+
+            def comp(e):
+                return e['cos_sim']
+
+            sentences_proj_embeddings = []
+            for sentence_proj in sentences_proj:
+                sentences_proj_embeddings += [model_global.encode(sentence_proj, convert_to_tensor=True)]
+
+            max_sims = []
+            for sentence_rp in sentences_rp:
+                sentence_rp_embedding = model_global.encode(sentence_rp, convert_to_tensor=True)
+                sim = []
+                # print(f'RP sentence: {sentence_rp[0]}')
+                for i in range(len(sentences_proj_embeddings)):
+                    sim += [{'proj': sentences_proj[i],
+                             'cos_sim': float(sentence_transformers.util.cos_sim(sentence_rp_embedding,
+                                                                                 sentences_proj_embeddings[i]))
+                             }]
+
+                max_sims.append(max(sim, key=comp)['cos_sim'])
+            return np.round(np.mean(max_sims), round_number)
+        return None
 
     def predict_transfomer_two_texts(self, text_1, text_2, model_name, round_number=4):
-        sentences_rp = Common.sent_preprocess(text_1)
-        sentences_proj = Common.sent_preprocess(text_2)
-        self.model = self.models[model_name]
-
-        def comp(e):
-            return e['cos_sim']
-
-        sentences_proj_embeddings = []
-        for sentence_proj in sentences_proj:
-            sentences_proj_embeddings += [self.model.encode(sentence_proj, convert_to_tensor=True)]
-
-        max_sims = []
-        for sentence_rp in sentences_rp:
-            sentence_rp_embedding = self.model.encode(sentence_rp, convert_to_tensor=True)
-            sim = []
-            # print(f'RP sentence: {sentence_rp[0]}')
-            for i in range(len(sentences_proj_embeddings)):
-                sim += [{'proj': sentences_proj[i],
-                         'cos_sim': float(sentence_transformers.util.cos_sim(sentence_rp_embedding,
-                                                                             sentences_proj_embeddings[i]))
-                         }]
-
-            # sim.sort(key=comp, reverse=True)
-            max_sims.append(max(sim, key=comp)['cos_sim'])
-            # print(np.round(np.mean(max_sims), round_number))
-        return np.round(np.mean(max_sims), round_number)
-
-    def predict_sim_two_texts(self, text1, text2, model_name, model_type, round_number=4):
-        if model_type == "transformer":
-            return self.predict_transfomer_two_texts(text1, text2, model_name)
-        elif model_type == "gensim":
-            return self.predict_gensim_two_texts(text1, text2, model_name)
+        global model_global
+        model_global = self.models[model_name]
+        return self.__predict_transfomer_two_texts__(text_1, text_2, round_number)
 
     def preprocess_and_save_pairs(self, data_df: pd.DataFrame, text_field_1, text_field_2, path=None):
         data_df_preprocessed = data_df.copy()
@@ -129,6 +126,7 @@ class ModelResearcher:
                 for i in range(sz):
                     sentences_1_words = [w for w in sentences_1[i] if w in self.model.wv.index_to_key]
                     sentences_2_words = [w for w in sentences_2[i] if w in self.model.wv.index_to_key]
+
                     sim = self.model.wv.n_similarity(sentences_1_words, sentences_2_words)
                     sentences_sim[i] = sim
 
@@ -163,8 +161,7 @@ class ModelResearcher:
                 sim = self.predict_sentences_similarity(sentences_1, sentences_2)
             else:
                 for i in range(len(sentences_1)):
-                    sim += [self.predict_sim_two_texts(sentences_1[i], sentences_2[i], model_name=model_name,
-                                                       model_type="transformer")]
+                    sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]
 
             steps, thresholds, f1_score, cutoff = Common.max_f1_score(sim, df, step=0.02)
 
@@ -208,8 +205,7 @@ class ModelResearcher:
                 sim = self.predict_sentences_similarity(sentences_1, sentences_2)
             else:
                 for i in range(len(sentences_1)):
-                    sim += [self.predict_sim_two_texts(sentences_1[i], sentences_2[i], model_name=model_name,
-                                                       model_type="transformer")]
+                    sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]
 
             predictions = []
             cutoffs = []
@@ -258,12 +254,11 @@ class ModelResearcher:
         elif model_type == "transformer":
             for i in range(len(sentences_1_train)):
                 sim_train += [
-                    self.predict_sim_two_texts(sentences_1_train[i], sentences_2_train[i], model_name=model_name,
-                                               model_type=model_type)]
+                    self.predict_transfomer_two_texts(sentences_1_train[i], sentences_2_train[i],
+                                                      model_name=model_name)]
             for i in range(len(sentences_1_test)):
                 sim_test += [
-                    self.predict_sim_two_texts(sentences_1_test[i], sentences_2_test[i], model_name=model_name,
-                                               model_type=model_type)]
+                    self.predict_transfomer_two_texts(sentences_1_test[i], sentences_2_test[i], model_name=model_name)]
 
         steps, thresholds, f1_score_train, cutoff = Common.max_f1_score(sim_train, df_train, step=0.02)
         metrics_train = Common.calc_all(sim_train, df_train, cutoff)
@@ -302,7 +297,6 @@ class ModelResearcher:
             sim = self.predict_sentences_similarity(sentences_1, sentences_2)
         else:
             for i in range(len(sentences_1)):
-                sim += [self.predict_sim_two_texts(sentences_1[i], sentences_2[i], model_name=model_name,
-                                                   model_type="transformer")]
+                sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]
         sim = [round(i, 3) for i in sim]
         return sim

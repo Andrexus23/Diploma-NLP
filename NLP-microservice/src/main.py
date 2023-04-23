@@ -13,9 +13,10 @@ from flasgger.utils import swag_from
 from urllib.parse import unquote
 from flask_swagger_ui import get_swaggerui_blueprint
 from sentence_transformers import SentenceTransformer
-
 import nlp.Common as Common
 import nlp.ModelResearcher as MR
+from redis import StrictRedis
+from redis_cache import RedisCache
 
 SWAGGER_URL = '/api/docs'  # URL для размещения SWAGGER_UI
 API_URL = '/static/swagger.json'
@@ -141,6 +142,7 @@ def maximize_f1_score(name):
     dataset.save(filename)
     dataset.close()
     try:
+        start = time.perf_counter()
         df = pd.read_json(filename)
         if name in ALLOWED_MODELS_GENSIM:
             df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
@@ -153,7 +155,10 @@ def maximize_f1_score(name):
                                                     model_name=path,
                                                     model_type="transformer",
                                                     step=0.02)
-        print(res)
+        end = time.perf_counter()
+        print(res, "time: " + str(end-start))
+
+
         return res
     except Exception as e:
         logging.error(traceback.format_exc())

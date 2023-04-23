@@ -7,13 +7,14 @@ import pandas as pd
 import pymorphy2
 from nltk import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
+from redis import StrictRedis
+from redis_cache import RedisCache
 
-# nltk.download('punkt')
-# nltk.download('stopwords')
 
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
+
 
 
 def preprocess(text: str, stop_words, punctuation_marks, morph):
@@ -26,6 +27,7 @@ def preprocess(text: str, stop_words, punctuation_marks, morph):
                 if lemma not in stop_words:
                     preprocessed_text.append(lemma)
     return preprocessed_text
+
 
 
 def preprocess_and_save(data_df: pd.DataFrame, path, text_field='text') -> pd.DataFrame:
@@ -123,6 +125,7 @@ def calc_all_loo(calc_states):
         "recall": round(float(TP / (TP + FN)), 3),
     }
 
+
 def calc_f1_score(sim, df, match_threshold):
     (TP, FP, FN, TN) = get_states(sim, df, match_threshold)
     #     print(TP, FP, FN, TN)
@@ -136,8 +139,6 @@ def calc_all(sim, df, match_threshold):
         "precision": round(float(TP / (TP + FP)), 3),
         "recall": round(float(TP / (TP + FN)), 3),
     }
-
-
 
 
 def calc_accuracy(sim, df, match_threshold):
