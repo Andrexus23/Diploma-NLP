@@ -3,6 +3,8 @@ import os
 import time
 import traceback
 from io import StringIO
+
+import pymorphy2
 from flask import Flask, jsonify, request, make_response, send_from_directory, send_file
 from flasgger import Swagger
 import pandas as pd
@@ -12,6 +14,7 @@ import json
 from flasgger.utils import swag_from
 from urllib.parse import unquote
 from flask_swagger_ui import get_swaggerui_blueprint
+from nltk.corpus import stopwords
 from sentence_transformers import SentenceTransformer
 import nlp.Common as Common
 import nlp.ModelResearcher as MR
@@ -26,6 +29,10 @@ MODELS_GENSIM_PATH = "nlp/models/"
 MODELS_TRANSFORMER_PATH = "nlp/models/sentence-transformers/"
 ALLOWED_MODELS_GENSIM = ["w2v",
                          "fast_text"]
+
+punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
+stop_words = stopwords.words("russian")
+morph = pymorphy2.MorphAnalyzer()
 
 ALLOWED_MODELS_TRANSFORMER = [
     "rubert-base-cased",
@@ -102,6 +109,8 @@ def match2texts(name):
     elif name in ALLOWED_MODELS_TRANSFORMER:
         path = MODELS_TRANSFORMER_PATH + name
         type_ = "transformer"
+    else:
+        return  jsonify({"Error": "Something went wrong"})
     try:
         values = request.values.values()
         first = next(values)
@@ -109,7 +118,14 @@ def match2texts(name):
         exists = modelResearcher.load(path, type_)
         if not exists:
             return {"Error": "No model: you should train or download it"}
-        sim = modelResearcher.predict_sim_two_texts(first, second, model_name=path, model_type=type_)
+        sim = None
+        if  type_ == "gensim":
+            first = Common.preprocess(first, stop_words, punctuation_marks, morph)
+            second = Common.preprocess(second, stop_words, punctuation_marks, morph)
+            sim = round(modelResearcher.predict_sentences_similarity(pd.Series(first), pd.Series(second))[0], 4)
+        elif type_ == "transformer":
+            sim = modelResearcher.predict_transfomer_two_texts(first, second, path, 4)
+
         if sim < 0:
             sim = 0
         print(sim)

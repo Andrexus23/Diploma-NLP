@@ -10,11 +10,9 @@ from nltk.corpus import stopwords
 from redis import StrictRedis
 from redis_cache import RedisCache
 
-
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
-
 
 
 def preprocess(text: str, stop_words, punctuation_marks, morph):
@@ -27,7 +25,6 @@ def preprocess(text: str, stop_words, punctuation_marks, morph):
                 if lemma not in stop_words:
                     preprocessed_text.append(lemma)
     return preprocessed_text
-
 
 
 def preprocess_and_save(data_df: pd.DataFrame, path, text_field='text') -> pd.DataFrame:

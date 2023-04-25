@@ -1,8 +1,11 @@
 import base64
 import json
+import pickle
+
 import pandas as pd
 import pymorphy2
 import nltk
+import redis
 import sentence_transformers
 from flask import make_response
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -27,23 +30,22 @@ import matplotlib.pyplot as plt
 from src.nlp import Common
 from redis import StrictRedis
 from redis_cache import RedisCache
-from functools import lru_cache
+import hashlib
 
-nltk.download('punkt')
-nltk.download('stopwords')
+# nltk.download('punkt')
+# nltk.download('stopwords')
 
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
 model_types = ["transformer", "gensim"]
 
-model_global = None
-
 
 class ModelResearcher:
     def __init__(self):
         self.models = {}
         self.model = None
+        self.redis = redis.Redis(host='localhost', port=6379, decode_responses=True, db=0)
 
     def load(self, path, model_type):
         try:
@@ -57,39 +59,43 @@ class ModelResearcher:
             print(e)
             return False
 
-    @staticmethod
-    @lru_cache(maxsize=5000)
-    def __predict_transfomer_two_texts__(text_1, text_2, round_number=4):
-        if model_global is not None:
-            sentences_rp = Common.sent_preprocess(text_1)
-            sentences_proj = Common.sent_preprocess(text_2)
-
-            def comp(e):
-                return e['cos_sim']
-
-            sentences_proj_embeddings = []
-            for sentence_proj in sentences_proj:
-                sentences_proj_embeddings += [model_global.encode(sentence_proj, convert_to_tensor=True)]
-
-            max_sims = []
-            for sentence_rp in sentences_rp:
-                sentence_rp_embedding = model_global.encode(sentence_rp, convert_to_tensor=True)
-                sim = []
-                # print(f'RP sentence: {sentence_rp[0]}')
-                for i in range(len(sentences_proj_embeddings)):
-                    sim += [{'proj': sentences_proj[i],
-                             'cos_sim': float(sentence_transformers.util.cos_sim(sentence_rp_embedding,
-                                                                                 sentences_proj_embeddings[i]))
-                             }]
-
-                max_sims.append(max(sim, key=comp)['cos_sim'])
-            return np.round(np.mean(max_sims), round_number)
-        return None
-
     def predict_transfomer_two_texts(self, text_1, text_2, model_name, round_number=4):
-        global model_global
-        model_global = self.models[model_name]
-        return self.__predict_transfomer_two_texts__(text_1, text_2, round_number)
+        text = text_1 + text_2 + model_name + str(round_number)
+        cache_key = hashlib.md5(text.encode("utf-8")).hexdigest()
+        cached_value = self.redis.hget(cache_key, "value")
+        print(cache_key, cached_value)
+        if cached_value:
+            return float(cached_value)
+
+        self.model = self.models[model_name]
+        sentences_rp = Common.sent_preprocess(text_1)
+        sentences_proj = Common.sent_preprocess(text_2)
+
+        def comp(e):
+            return e['cos_sim']
+
+        sentences_proj_embeddings = []
+        for sentence_proj in sentences_proj:
+            sentences_proj_embeddings += [self.model.encode(sentence_proj, convert_to_tensor=True)]
+
+        max_sims = []
+        for sentence_rp in sentences_rp:
+            sentence_rp_embedding = self.model.encode(sentence_rp, convert_to_tensor=True)
+            sim = []
+            # print(f'RP sentence: {sentence_rp[0]}')
+            for i in range(len(sentences_proj_embeddings)):
+                sim += [{'proj': sentences_proj[i],
+                         'cos_sim': float(sentence_transformers.util.cos_sim(sentence_rp_embedding,
+                                                                             sentences_proj_embeddings[i]))
+                         }]
+
+            max_sims.append(max(sim, key=comp)['cos_sim'])
+
+        value = float(np.round(np.mean(max_sims), round_number))
+        self.redis.hmset(cache_key, {"value": value})
+        self.redis.expire(cache_key, 60*60*24*7)
+        return value
+
 
     def preprocess_and_save_pairs(self, data_df: pd.DataFrame, text_field_1, text_field_2, path=None):
         data_df_preprocessed = data_df.copy()
