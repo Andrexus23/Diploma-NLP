@@ -1,51 +1,39 @@
 import base64
 import json
 import pickle
-
 import pandas as pd
 import pymorphy2
 import nltk
 import redis
 import sentence_transformers
-from flask import make_response
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-from matplotlib.figure import Figure
-from nltk.tokenize import word_tokenize, sent_tokenize
+
 from nltk.corpus import stopwords
 import gensim
 import gensim.models as models
-from gensim.models import Word2Vec
-from gensim.models import FastText
-from gensim.models import KeyedVectors
-import gensim.downloader as api
 from sentence_transformers import SentenceTransformer
 from sklearn.utils import shuffle
-import zipfile
-import sys
 import requests, io
-import re
-import random
 import numpy as np
+import matplotlib
+matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from src.nlp import Common
-from redis import StrictRedis
-from redis_cache import RedisCache
 import hashlib
 
-# nltk.download('punkt')
-# nltk.download('stopwords')
-
+plt.rcParams.update({'font.size': 18})
+plt.rcParams['figure.dpi'] = 300
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
-model_types = ["transformer", "gensim"]
-
+model_types = []
+redis_port = 0
+redis_host = '-'
 
 class ModelResearcher:
     def __init__(self):
         self.models = {}
         self.model = None
-        self.redis = redis.Redis(host='localhost', port=6379, decode_responses=True, db=0)
+        self.redis = redis.Redis(host=redis_host, port=redis_port, decode_responses=True, db=0)
 
     def load(self, path, model_type):
         try:
@@ -66,8 +54,6 @@ class ModelResearcher:
         print(cache_key, cached_value)
         if cached_value:
             return float(cached_value)
-
-        self.model = self.models[model_name]
         sentences_rp = Common.sent_preprocess(text_1)
         sentences_proj = Common.sent_preprocess(text_2)
 
@@ -93,9 +79,8 @@ class ModelResearcher:
 
         value = float(np.round(np.mean(max_sims), round_number))
         self.redis.hmset(cache_key, {"value": value})
-        self.redis.expire(cache_key, 60*60*24*7)
+        self.redis.expire(cache_key, 60 * 60 * 24 * 7)
         return value
-
 
     def preprocess_and_save_pairs(self, data_df: pd.DataFrame, text_field_1, text_field_2, path=None):
         data_df_preprocessed = data_df.copy()
@@ -117,18 +102,18 @@ class ModelResearcher:
         elif model == "fast_text":
             train_part = data_df['preprocessed_texts']
             self.model = gensim.models.FastText(sentences=train_part, min_count=5, vector_size=50, epochs=10)
-            # self.model.build_vocab(corpus_iterable=train_part)
-            # self.model.train(corpus_iterable=train_part, total_examples=len(train_part), epochs=10)
             self.model.save(model_path + model)
         return
 
-    def predict_sentences_similarity(self, sentences_1: pd.Series, sentences_2: pd.Series):
+    def predict_sentences_similarity(self, sentences_1: pd.Series, sentences_2: pd.Series, model_name="w2v"):
         if sentences_1.size != sentences_2.size:
             return None
         else:
             if self.model is not None:
                 sentences_sim = np.zeros(sentences_1.size)
                 sz = sentences_1.size
+                sentences_1_words = None
+                sentences_2_words = None
                 for i in range(sz):
                     sentences_1_words = [w for w in sentences_1[i] if w in self.model.wv.index_to_key]
                     sentences_2_words = [w for w in sentences_2[i] if w in self.model.wv.index_to_key]
@@ -164,7 +149,7 @@ class ModelResearcher:
             steps = np.round(steps, 2)
             sim = []
             if model_type == "gensim":
-                sim = self.predict_sentences_similarity(sentences_1, sentences_2)
+                sim = self.predict_sentences_similarity(sentences_1, sentences_2, model_name=model_name)
             else:
                 for i in range(len(sentences_1)):
                     sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]
@@ -176,10 +161,10 @@ class ModelResearcher:
             fig = plt.figure(figsize=(10, 8))
             plt.grid(True)
             plt.title(f"Basic maximization: {model_name}")
-            plt.xlabel("Cutoff")
-            plt.ylabel("F1-score")
+            plt.xlabel("Cutoff", fontsize=18)
+            plt.ylabel("F1-score", fontsize=18)
             plt.plot(steps, thresholds)
-            plt.plot(cutoff, f1_score, 'r*')
+            plt.plot(cutoff, f1_score, "r*")
             buf = io.BytesIO()
             fig.savefig(buf, format='png')
             encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
@@ -208,13 +193,14 @@ class ModelResearcher:
             steps = np.round(steps, 2)
             sim = []
             if model_type == "gensim":
-                sim = self.predict_sentences_similarity(sentences_1, sentences_2)
+                sim = self.predict_sentences_similarity(sentences_1, sentences_2, model_name=model_name)
             else:
                 for i in range(len(sentences_1)):
                     sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]
 
             predictions = []
             cutoffs = []
+
             for i in range(len(sim)):
                 current_df = df.drop(i).reset_index().drop(labels='index', axis=1)
                 current_sim = sim[:i] + sim[i + 1:]
@@ -239,7 +225,7 @@ class ModelResearcher:
             res.setdefault("2_recall_loo", metrics["recall"])
             return res
 
-    def maximize_f1_score_train_test(self, df_train, df_test, model_name, model_type, field_1, field_2,
+    def maximize_f1_score_train_test(self, df_train, df_test, model_name,  model_type, field_1, field_2,
                                      step=0.02):
 
         steps = np.linspace(0, 1, num=int(1 / step))
@@ -255,8 +241,8 @@ class ModelResearcher:
             raise ValueError("Error length")
 
         if model_type == "gensim":
-            sim_train = self.predict_sentences_similarity(sentences_1_train, sentences_2_train)
-            sim_test = self.predict_sentences_similarity(sentences_1_test, sentences_2_test)
+            sim_train = self.predict_sentences_similarity(sentences_1_train, sentences_2_train, model_name=model_name)
+            sim_test = self.predict_sentences_similarity(sentences_1_test, sentences_2_test, model_name=model_name)
         elif model_type == "transformer":
             for i in range(len(sentences_1_train)):
                 sim_train += [
@@ -275,8 +261,8 @@ class ModelResearcher:
         fig = plt.figure(figsize=(10, 8))
         plt.grid(True)
         plt.title("Train dataset: " + model_name)
-        plt.xlabel("Cutoff")
-        plt.ylabel("F1-score")
+        plt.xlabel("Cutoff", fontsize=18)
+        plt.ylabel("F1-score", fontsize=18)
         plt.plot(steps, thresholds)
         plt.plot(cutoff, f1_score_train, 'r*')
         buf = io.BytesIO()
@@ -300,7 +286,7 @@ class ModelResearcher:
         sentences_1 = df[field_1]
         sentences_2 = df[field_2]
         if model_type == "gensim":
-            sim = self.predict_sentences_similarity(sentences_1, sentences_2)
+            sim = self.predict_sentences_similarity(sentences_1, sentences_2, model_name=model_name)
         else:
             for i in range(len(sentences_1)):
                 sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]

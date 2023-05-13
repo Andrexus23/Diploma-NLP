@@ -1,19 +1,15 @@
 import json
 import re
-
 import nltk
 import numpy as np
 import pandas as pd
 import pymorphy2
 from nltk import sent_tokenize, word_tokenize
 from nltk.corpus import stopwords
-from redis import StrictRedis
-from redis_cache import RedisCache
 
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
-
 
 def preprocess(text: str, stop_words, punctuation_marks, morph):
     tokens = word_tokenize(text.lower())
@@ -25,7 +21,6 @@ def preprocess(text: str, stop_words, punctuation_marks, morph):
                 if lemma not in stop_words:
                     preprocessed_text.append(lemma)
     return preprocessed_text
-
 
 def preprocess_and_save(data_df: pd.DataFrame, path, text_field='text') -> pd.DataFrame:
     # for preprocessing dataset. Use it only in critical cases cause it's too slow on big datasets
@@ -92,21 +87,21 @@ def get_states_loo(predictions, df):
 
 
 def max_f1_score(sim, df, step=0.02):
-    threshold = 0
-    thresholds = []
+    score = 0
+    scores = []
     f1_score = 0
     cutoff = 0
     h = step
     steps = np.linspace(0, 1, num=int(1 / h))
     steps = np.round(steps, 2)
     for i in steps:
-        threshold = calc_f1_score(sim, df, h)
-        thresholds.append(threshold)
-        if threshold > f1_score:
-            f1_score = threshold
+        score = calc_f1_score(sim, df, h)
+        scores.append(score)
+        if score > f1_score:
+            f1_score = score
             cutoff = h
         h += step
-    return steps, thresholds, f1_score, round(cutoff, 3)
+    return steps, scores, f1_score, round(cutoff, 3)
 
 
 def calc_f1_score_loo(calc_states):

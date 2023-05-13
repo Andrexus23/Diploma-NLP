@@ -1,45 +1,42 @@
+import configparser
 import logging
-import os
+import sys
 import time
 import traceback
-from io import StringIO
-
 import pymorphy2
-from flask import Flask, jsonify, request, make_response, send_from_directory, send_file
-from flasgger import Swagger
+import sklearn.utils
+from flask import Flask, jsonify, request
 import pandas as pd
-import numpy as np
 from flask_restful import Api, Resource, reqparse
 import json
-from flasgger.utils import swag_from
-from urllib.parse import unquote
 from flask_swagger_ui import get_swaggerui_blueprint
 from nltk.corpus import stopwords
-from sentence_transformers import SentenceTransformer
+
+config = configparser.ConfigParser()
+config.read(sys.argv[-1])
+sys.path.append(config['path']['SRC_PATH'])
+
 import nlp.Common as Common
 import nlp.ModelResearcher as MR
-from redis import StrictRedis
-from redis_cache import RedisCache
 
-SWAGGER_URL = '/api/docs'  # URL для размещения SWAGGER_UI
-API_URL = '/static/swagger.json'
-TRAIN_PATH = './posted/train.json'
-PREPROCESSED_PATH = './nlp/data/preprocessed_documents.json'
-MODELS_GENSIM_PATH = "nlp/models/"
-MODELS_TRANSFORMER_PATH = "nlp/models/sentence-transformers/"
-ALLOWED_MODELS_GENSIM = ["w2v",
-                         "fast_text"]
+SWAGGER_URL = config['path']['SWAGGER_URL']  # URL для размещения SWAGGER_UI
+API_URL = config['path']['API_URL']
+TRAIN_PATH = config['path']['TRAIN_PATH']
+PREPROCESSED_PATH = config['path']['PREPROCESSED_PATH']
+MODELS_GENSIM_PATH = config['path']['MODELS_GENSIM_PATH']
+MODELS_TRANSFORMER_PATH = config['path']['MODELS_TRANSFORMER_PATH']
+UPLOADED = config['path']['UPLOADED']
+ALLOWED_MODELS_GENSIM = json.loads(config['models']['gensim'])
+ALLOWED_MODELS_TRANSFORMER = json.loads(config['models']['transformer'])
+MR.model_types = json.loads(config['models']['model_types'])
+MR.redis_host = config['hosts']['redis_host']
+MR.redis_port = int(config['ports']['redis_port'])
+server_host = config['hosts']['server_host']
+server_port = int(config['ports']['server_port'])
 
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
-
-ALLOWED_MODELS_TRANSFORMER = [
-    "rubert-base-cased",
-    "paraphrase-multilingual-MiniLM-L12-v2"]
-
-UPLOADED = './uploaded'
-
 app = Flask(__name__)
 
 swaggerui_blueprint = get_swaggerui_blueprint(
@@ -49,9 +46,7 @@ swaggerui_blueprint = get_swaggerui_blueprint(
         'app_name': "Test application"
     },
 )
-
 app.register_blueprint(swaggerui_blueprint)
-
 api = Api(app)
 
 
@@ -72,10 +67,10 @@ def train_model(name):
     modelResearcher = MR.ModelResearcher()
     preprocessed_texts = None
     try:
-        preprocessed_texts = Common.read_json(PREPROCESSED_PATH)
+        preprocessed_texts = pd.read_json(PREPROCESSED_PATH)
     except FileNotFoundError:
         start = time.perf_counter()
-        texts = Common.read_json(TRAIN_PATH)
+        texts = pd.read_json(TRAIN_PATH)
         preprocessed_texts = Common.preprocess_and_save(texts, PREPROCESSED_PATH)
         end = time.perf_counter()
         res = f'Preprocessing time: {end - start:0.4f} secs'
@@ -110,7 +105,7 @@ def match2texts(name):
         path = MODELS_TRANSFORMER_PATH + name
         type_ = "transformer"
     else:
-        return  jsonify({"Error": "Something went wrong"})
+        return jsonify({"Error": "Something went wrong"})
     try:
         values = request.values.values()
         first = next(values)
@@ -119,15 +114,17 @@ def match2texts(name):
         if not exists:
             return {"Error": "No model: you should train or download it"}
         sim = None
-        if  type_ == "gensim":
+        if type_ == "gensim":
             first = Common.preprocess(first, stop_words, punctuation_marks, morph)
             second = Common.preprocess(second, stop_words, punctuation_marks, morph)
-            sim = round(modelResearcher.predict_sentences_similarity(pd.Series(first), pd.Series(second))[0], 4)
+            sim = round(
+                modelResearcher.predict_sentences_similarity(pd.Series([first]), pd.Series([second]), model_name=name)[
+                    0], 4)
         elif type_ == "transformer":
             sim = modelResearcher.predict_transfomer_two_texts(first, second, path, 4)
 
         if sim < 0:
-            sim = 0
+            sim = 0.0
         print(sim)
         return jsonify({"Texts' similarity": str(sim)})
     except Exception as e:
@@ -172,8 +169,7 @@ def maximize_f1_score(name):
                                                     model_type="transformer",
                                                     step=0.02)
         end = time.perf_counter()
-        print(res, "time: " + str(end-start))
-
+        print(res, "time: " + str(end - start))
 
         return res
     except Exception as e:
@@ -205,15 +201,17 @@ def maximize_f1_score_loo(name):
     dataset.close()
     try:
         df = pd.read_json(filename)
+        df = sklearn.utils.shuffle(df)
+        df = df.reset_index().drop(labels='index', axis=1)
         if name in ALLOWED_MODELS_GENSIM:
             df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
             res = modelResearcher.maximize_f1_score_loo(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
-                                                        model_name=path,
+                                                        model_name=name,
                                                         model_type="gensim",
                                                         step=0.02)
         else:
             res = modelResearcher.maximize_f1_score_loo(df["text_rp"], df["text_proj"], df,
-                                                        model_name=path,
+                                                        model_name=name,
                                                         model_type="transformer",
                                                         step=0.02)
         return res
@@ -253,14 +251,14 @@ def maximize_f1_score_train_test(name):
             df_train_f1 = modelResearcher.preprocess_and_save_pairs(df_train_f1, 'text_rp', 'text_proj')
             df_test_f1 = modelResearcher.preprocess_and_save_pairs(df_test_f1, 'text_rp', 'text_proj')
             res = modelResearcher.maximize_f1_score_train_test(df_train_f1, df_test_f1,
-                                                               model_name=path,
+                                                               model_name=name,
                                                                model_type="gensim",
                                                                field_1="preprocessed_text_rp",
                                                                field_2="preprocessed_text_proj",
                                                                step=0.02)
         elif name in ALLOWED_MODELS_TRANSFORMER:
             res = modelResearcher.maximize_f1_score_train_test(df_train_f1, df_test_f1,
-                                                               model_name=path,
+                                                               model_name=name,
                                                                model_type="transformer",
                                                                field_1="text_rp",
                                                                field_2="text_proj",
@@ -299,14 +297,14 @@ def match_two_texts_from_corpus(name):
     if name in ALLOWED_MODELS_GENSIM:
         df_preprocessed = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
         res = modelResearcher.match_texts_from_corpus(df_preprocessed,
-                                                      model_name=path,
+                                                      model_name=name,
                                                       model_type="gensim",
                                                       field_1="preprocessed_text_rp",
                                                       field_2="preprocessed_text_proj")
 
     elif name in ALLOWED_MODELS_TRANSFORMER:
         res = modelResearcher.match_texts_from_corpus(df,
-                                                      model_name=path,
+                                                      model_name=name,
                                                       model_type="transformer",
                                                       field_1="text_rp",
                                                       field_2="text_proj")
@@ -320,4 +318,4 @@ def get_list_models():
 
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(port=server_port, host=server_host, debug=True)
