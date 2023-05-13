@@ -160,16 +160,16 @@ def maximize_f1_score(name):
         if name in ALLOWED_MODELS_GENSIM:
             df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
             res = modelResearcher.maximize_f1_score(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
-                                                    model_name=path,
+                                                    model_name=name,
                                                     model_type="gensim",
                                                     step=0.02)
         else:
             res = modelResearcher.maximize_f1_score(df["text_rp"], df["text_proj"], df,
-                                                    model_name=path,
+                                                    model_name=name,
                                                     model_type="transformer",
                                                     step=0.02)
         end = time.perf_counter()
-        print(res, "time: " + str(end - start))
+        print("time: " + str(end - start))
 
         return res
     except Exception as e:
