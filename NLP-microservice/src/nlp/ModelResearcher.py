@@ -264,7 +264,16 @@ class ModelResearcher:
         plt.xlabel("Cutoff", fontsize=18)
         plt.ylabel("F1-score", fontsize=18)
         plt.plot(steps, thresholds)
+        print(cutoff, f1_score_train)
+        print(len(steps), len(thresholds))
+        for i in range(len(thresholds)):
+            if (steps[i] == cutoff) and (thresholds[i] == f1_score_train):
+                print(steps[i], thresholds[i], 'MAX')
+            else:
+                print(steps[i], thresholds[i])
+
         plt.plot(cutoff, f1_score_train, 'r*')
+        plt.annotate( f'({cutoff}, {f1_score_train})', (cutoff-0.06, f1_score_train+0.01), fontsize=14)
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
         encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")

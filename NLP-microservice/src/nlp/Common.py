@@ -92,15 +92,17 @@ def max_f1_score(sim, df, step=0.02):
     f1_score = 0
     cutoff = 0
     h = step
-    steps = np.linspace(0, 1, num=int(1 / h))
+    steps = np.linspace(0, 1, num=int(1/h)+1)
+    print(steps)
     steps = np.round(steps, 2)
     for i in steps:
-        score = calc_f1_score(sim, df, h)
+        score = calc_f1_score(sim, df, i)
         scores.append(score)
+        # print('CURREMT', i, score)
         if score > f1_score:
             f1_score = score
-            cutoff = h
-        h += step
+            cutoff = i
+            # print('UPDATE', cutoff, f1_score)
     return steps, scores, f1_score, round(cutoff, 3)
 
 
