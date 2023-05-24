@@ -14,10 +14,11 @@ from nltk.corpus import stopwords
 
 config = configparser.ConfigParser()
 config.read(sys.argv[-1])
-sys.path.append(config['path']['SRC_PATH'])
+sys.path.append(config['path']['SERVICE_PATH'])
 
-import nlp.Common as Common
-import nlp.ModelResearcher as MR
+import Common
+import ModelResearcher as MR
+
 
 SWAGGER_URL = config['path']['SWAGGER_URL']  # URL для размещения SWAGGER_UI
 API_URL = config['path']['API_URL']
@@ -33,6 +34,8 @@ MR.redis_host = config['hosts']['redis_host']
 MR.redis_port = int(config['ports']['redis_port'])
 server_host = config['hosts']['server_host']
 server_port = int(config['ports']['server_port'])
+
+print(API_URL)
 
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
@@ -57,7 +60,6 @@ def upload_train_data():
         dataset.save(TRAIN_PATH)
         dataset.close()
         return {"Success": "File's been successfully uploaded"}
-
     return {"Error": "Couldn't load file"}
 
 
