@@ -1,0 +1,29 @@
+version: '3.4'
+services:
+  redis:
+    container_name: redis
+    build:
+      context: .
+      dockerfile: docker/redis/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "6379:6379"
+  flask:
+    container_name: flask
+    build:
+      context: .
+      dockerfile: docker/flask/Dockerfile
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=True
+      - PYTHONUNBUFFERED=True
+    ports:
+      - "5000:5000"
+    command: python src/main.py src/config.ini
+    links:
+      - redis
+
+
+

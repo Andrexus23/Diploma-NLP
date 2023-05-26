@@ -11,10 +11,14 @@ from flask_restful import Api, Resource, reqparse
 import json
 from flask_swagger_ui import get_swaggerui_blueprint
 from nltk.corpus import stopwords
+from flask_cors import CORS
 
+
+#
 config = configparser.ConfigParser()
 config.read(sys.argv[-1])
 sys.path.append(config['path']['SERVICE_PATH'])
+
 
 import Common
 import ModelResearcher as MR
@@ -35,7 +39,6 @@ MR.redis_port = int(config['ports']['redis_port'])
 server_host = config['hosts']['server_host']
 server_port = int(config['ports']['server_port'])
 
-print(API_URL)
 
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
@@ -49,8 +52,11 @@ swaggerui_blueprint = get_swaggerui_blueprint(
         'app_name': "Test application"
     },
 )
+
 app.register_blueprint(swaggerui_blueprint)
 api = Api(app)
+CORS(app, support_credentials=True)
+
 
 
 @app.route("/api/docs/train/uploadDataset", methods=['POST'])
@@ -320,4 +326,4 @@ def get_list_models():
 
 
 if __name__ == '__main__':
-    app.run(port=server_port, host=server_host, debug=True)
+    app.run(port=server_port, host='0.0.0.0', debug=True)

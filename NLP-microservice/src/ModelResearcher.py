@@ -5,7 +5,7 @@ import pandas as pd
 import pymorphy2
 import nltk
 import redis
-import sentence_transformers
+
 
 from nltk.corpus import stopwords
 import gensim
@@ -19,6 +19,7 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import Common
 import hashlib
+import sentence_transformers
 fontsize = 18
 plt.rcParams.update({'font.size': fontsize})
 plt.rcParams['figure.dpi'] = 400
