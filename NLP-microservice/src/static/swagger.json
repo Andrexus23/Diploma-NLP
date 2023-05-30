@@ -70,6 +70,39 @@
         }
       }
     },
+    "/get-ROC-AUC": {
+      "post": {
+        "tags": [
+          "Get ROC-AUC for all models"
+        ],
+        "description": "Get ROC-AUC for all models",
+         "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "file",
+                    "format": "text/plain"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
     "/match2texts/{modelId}": {
       "post": {
         "tags": [

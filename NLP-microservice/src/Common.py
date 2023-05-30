@@ -138,3 +138,34 @@ def calc_all(sim, df, match_threshold):
 def calc_accuracy(sim, df, match_threshold):
     (TP, FP, FN, TN) = get_states(sim, df, match_threshold)
     return round(float((TP + TN) / (TP + TN + FP + FN)), 3)
+
+def calc_tpr_fpr(sim, df, match_threshold):
+    (TP, FP, FN, TN) = get_states(sim, df, match_threshold)
+    return {
+       "tpr": round(float(TP / (TP + FN)), 3),
+       "fpr": round(float(FP / (FP + TN)), 3)
+    }
+
+def max_diff_tpr_fpr(sim, df, step=0.02):
+    score = 0
+    scores = []
+    diff_tpr_fpr = 0
+    cutoff = 0
+    h = step
+    steps = np.linspace(0, 1, num=int(1/h)+1)
+    steps = np.round(steps, 2)
+    tprs = []
+    fprs = []
+    for i in steps:
+        try:
+            score = calc_tpr_fpr(sim, df, i)
+            tprs.append(score["tpr"])
+            fprs.append(score["fpr"])
+            diff = round(float((score["tpr"] - score["fpr"])), 3)
+            if  diff > diff_tpr_fpr:
+                diff_tpr_fpr = diff
+                cutoff = i
+        except ZeroDivisionError:
+            print('ZeroDiv')
+            pass
+    return steps, tprs, fprs, cutoff

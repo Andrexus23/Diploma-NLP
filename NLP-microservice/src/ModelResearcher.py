@@ -5,8 +5,7 @@ import pandas as pd
 import pymorphy2
 import nltk
 import redis
-
-
+import time
 from nltk.corpus import stopwords
 import gensim
 import gensim.models as models
@@ -15,11 +14,15 @@ from sklearn.utils import shuffle
 import requests, io
 import numpy as np
 import matplotlib
+from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_auc_score
+import matplotlib.pyplot as plt
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import Common
 import hashlib
 import sentence_transformers
+
 fontsize = 18
 plt.rcParams.update({'font.size': fontsize})
 plt.rcParams['figure.dpi'] = 400
@@ -29,6 +32,7 @@ morph = pymorphy2.MorphAnalyzer()
 model_types = []
 redis_port = 0
 redis_host = '-'
+line_thickness = 3
 
 
 class ModelResearcher:
@@ -37,13 +41,13 @@ class ModelResearcher:
         self.model = None
         self.redis = redis.Redis(host=redis_host, port=redis_port, decode_responses=True, db=0)
 
-    def load(self, path, model_type):
+    def load(self, path, model_name, model_type):
         try:
             if model_type == "gensim":
-                self.models.setdefault(path, models.ldamodel.LdaModel.load(path))
+                self.models.setdefault(path, [models.ldamodel.LdaModel.load(path), model_name, model_type])
             elif model_type == "transformer":
-                self.models.setdefault(path, SentenceTransformer(path))
-            self.model = self.models[path]
+                self.models.setdefault(path, [SentenceTransformer(path), model_name, model_type])
+            self.model = self.models[path][0]
             return True
         except Exception as e:
             print(e)
@@ -56,6 +60,7 @@ class ModelResearcher:
         print(cache_key, cached_value)
         if cached_value:
             return float(cached_value)
+
         sentences_rp = Common.sent_preprocess(text_1)
         sentences_proj = Common.sent_preprocess(text_2)
 
@@ -226,7 +231,7 @@ class ModelResearcher:
             res.setdefault("2_recall_loo", metrics["recall"])
             return res
 
-    def maximize_f1_score_train_test(self, df_train, df_test, model_name,  model_type, field_1, field_2,
+    def maximize_f1_score_train_test(self, df_train, df_test, model_name, model_type, field_1, field_2,
                                      step=0.02):
 
         steps = np.linspace(0, 1, num=int(1 / step))
@@ -257,7 +262,6 @@ class ModelResearcher:
         metrics_train = Common.calc_all(sim_train, df_train, cutoff)
         metrics_test = Common.calc_all(sim_test, df_test, cutoff)
 
-
         fig = plt.figure(figsize=(7, 6))
         plt.grid(True)
         plt.title("Train dataset: " + model_name, fontsize=fontsize)
@@ -265,7 +269,7 @@ class ModelResearcher:
         plt.ylabel("F1-score", fontsize=fontsize)
         plt.plot(steps, thresholds)
         plt.plot(cutoff, f1_score_train, 'r*')
-        plt.annotate( f'({cutoff}, {f1_score_train})', (cutoff-0.06, f1_score_train+0.01), fontsize=fontsize-6)
+        plt.annotate(f'({cutoff}, {f1_score_train})', (cutoff - 0.06, f1_score_train + 0.01), fontsize=fontsize - 6)
         buf = io.BytesIO()
         fig.savefig(buf, format='png')
         encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
@@ -282,14 +286,56 @@ class ModelResearcher:
 
         return res
 
+    def get_roc_auc(self, df, field_1, field_2, step=0.02):
+        colors = {'darkorange', 'dodgerblue', 'brown', 'olivedrab'}
+        df_preprocessed = self.preprocess_and_save_pairs( df, field_1, field_2)
+        fig = plt.figure(figsize=(10, 8))
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.grid(True)
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC-AUC')
+
+        for model in self.models.items():
+            self.model = model[1][0]
+            sim = []
+            if model[1][2] == "gensim":
+                sim = self.match_texts_from_corpus(df_preprocessed, model_name=model[1][1], model_type=model[1][2], field_1='preprocessed_' + field_1,
+                                                   field_2='preprocessed_' + field_2)
+            else:
+                sim = self.match_texts_from_corpus(df, model_name=model[1][1], model_type=model[1][2],
+                                                   field_1=field_1,
+                                                   field_2=field_2)
+            steps, tprs, fprs, cutoff = Common.max_diff_tpr_fpr(sim, df)
+            roc_auc = auc(fprs, tprs)
+            if model[1][1] == "paraphrase-multilingual-MiniLM-L12-v2":
+                model[1][1] = "multilingual"
+            plt.plot(fprs, tprs, color=colors.pop(), linewidth=line_thickness,
+                     label=f'ROC {model[1][1]} (area = {round(roc_auc, 2)}, cutoff = {cutoff})')
+            plt.plot([0, 1], [0, 1], color='navy', linestyle='--', linewidth=line_thickness)
+
+        res = {}
+        plt.legend(loc="best")
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
+        image_url = f"data:image/png;base64,{encoded_img}"
+        res.setdefault("image", image_url)
+        return res
+
     def match_texts_from_corpus(self, df, model_name, model_type, field_1, field_2):
         sim = []
         sentences_1 = df[field_1]
         sentences_2 = df[field_2]
+        start = time.time()
         if model_type == "gensim":
             sim = self.predict_sentences_similarity(sentences_1, sentences_2, model_name=model_name)
         else:
             for i in range(len(sentences_1)):
                 sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]
         sim = [round(i, 3) for i in sim]
+        res = time.time() - start
+        print(f"Затраченное время: {round(res, 6)} секунд")
+        print("Затраченное время: {}".format(time.strftime("%H:%M:%S", time.gmtime(res))))
         return sim

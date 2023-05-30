@@ -32,7 +32,7 @@ with app.app_context():
         g.TRAIN_PATH = g.config['path']['TRAIN_PATH']
         g.PREPROCESSED_PATH = g.config['path']['PREPROCESSED_PATH']
         g.MODELS_GENSIM_PATH = g.config['path']['MODELS_GENSIM_PATH']
-        g.MODELS_TRANSFORMER_PATH =g.config['path']['MODELS_TRANSFORMER_PATH']
+        g.MODELS_TRANSFORMER_PATH = g.config['path']['MODELS_TRANSFORMER_PATH']
         g.UPLOADED = g.config['path']['UPLOADED']
         g.ALLOWED_MODELS_GENSIM = json.loads(g.config['models']['gensim'])
         g.ALLOWED_MODELS_TRANSFORMER = json.loads(g.config['models']['transformer'])
@@ -41,6 +41,8 @@ with app.app_context():
         MR.redis_port = int(g.config['ports']['redis_port'])
         g.server_host = g.config['hosts']['server_host']
         g.server_port = int(g.config['ports']['server_port'])
+
+
     @app.route("/api/docs/train/uploadDataset", methods=['POST'])
     def upload_train_data():
         if len(request.files):
@@ -49,6 +51,7 @@ with app.app_context():
             dataset.close()
             return {"Success": "File's been successfully uploaded"}
         return {"Error": "Couldn't load file"}
+
 
     @app.route("/api/docs/train/<string:name>", methods=['GET'])
     def train_model(name):
@@ -99,7 +102,7 @@ with app.app_context():
             values = request.values.values()
             first = next(values)
             second = next(values)
-            exists = modelResearcher.load(path, type_)
+            exists = modelResearcher.load(path, name, type_)
             if not exists:
                 return {"Error": "No model: you should train or download it"}
             sim = None
@@ -107,7 +110,8 @@ with app.app_context():
                 first = Common.preprocess(first, stop_words, punctuation_marks, morph)
                 second = Common.preprocess(second, stop_words, punctuation_marks, morph)
                 sim = round(
-                    modelResearcher.predict_sentences_similarity(pd.Series([first]), pd.Series([second]), model_name=name)[
+                    modelResearcher.predict_sentences_similarity(pd.Series([first]), pd.Series([second]),
+                                                                 model_name=name)[
                         0], 4)
             elif type_ == "transformer":
                 sim = modelResearcher.predict_transfomer_two_texts(first, second, path, 4)
@@ -129,13 +133,13 @@ with app.app_context():
 
         if name in g.ALLOWED_MODELS_GENSIM:
             modelResearcher = MR.ModelResearcher()
-            path = MODELS_GENSIM_PATH + name
+            path = g.MODELS_GENSIM_PATH + name
             type_ = "gensim"
         else:
             modelResearcher = MR.ModelResearcher()
             path = g.MODELS_TRANSFORMER_PATH + name
             type_ = "transformer"
-        exists = modelResearcher.load(path, model_type=type_)
+        exists = modelResearcher.load(path, name, model_type=type_)
 
         if not exists:
             return {"Error": "No model: you should train or download it"}
@@ -180,7 +184,7 @@ with app.app_context():
             modelResearcher = MR.ModelResearcher()
             path = g.MODELS_TRANSFORMER_PATH + name
             type_ = "transformer"
-        exists = modelResearcher.load(path, model_type=type_)
+        exists = modelResearcher.load(path, name, model_type=type_)
 
         if not exists:
             return {"Error": "No model: you should train or download it"}
@@ -194,7 +198,8 @@ with app.app_context():
             df = df.reset_index().drop(labels='index', axis=1)
             if name in g.ALLOWED_MODELS_GENSIM:
                 df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
-                res = modelResearcher.maximize_f1_score_loo(df["preprocessed_text_rp"], df["preprocessed_text_proj"], df,
+                res = modelResearcher.maximize_f1_score_loo(df["preprocessed_text_rp"], df["preprocessed_text_proj"],
+                                                            df,
                                                             model_name=name,
                                                             model_type="gensim",
                                                             step=0.02)
@@ -223,7 +228,7 @@ with app.app_context():
             modelResearcher = MR.ModelResearcher()
             path = g.MODELS_TRANSFORMER_PATH + name
             type_ = "transformer"
-        exists = modelResearcher.load(path, model_type=type_)
+        exists = modelResearcher.load(path, name, model_type=type_)
 
         if not exists:
             return {"Error": "No model: you should train or download it"}
@@ -273,15 +278,11 @@ with app.app_context():
             modelResearcher = MR.ModelResearcher()
             path = g.MODELS_TRANSFORMER_PATH + name
             type_ = "transformer"
-        exists = modelResearcher.load(path, model_type=type_)
+        exists = modelResearcher.load(path, name, model_type=type_)
 
         if not exists:
             return {"Error": "No model: you should train or download it"}
-        dataset = request.files['file']
-        filename = g.UPLOADED + "/" + dataset.filename
-        dataset.save(filename)
-        dataset.close()
-        df = pd.read_json(filename)
+        df = get_df('file')
         res = None
         if name in g.ALLOWED_MODELS_GENSIM:
             df_preprocessed = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
@@ -298,7 +299,30 @@ with app.app_context():
                                                           field_1="text_rp",
                                                           field_2="text_proj")
         df.insert(loc=4, column='score', value=res)
+        print(res)
         return df.to_json(orient="records", force_ascii=False)
+
+
+    def get_df(name):
+        dataset = request.files[name]
+        filename = g.UPLOADED + "/" + dataset.filename
+        dataset.save(filename)
+        dataset.close()
+        return pd.read_json(filename)
+
+
+    @app.route("/api/docs/get-ROC-AUC", methods=["POST"])
+    def get_roc_auc():
+        modelResearcher = MR.ModelResearcher()
+        df = get_df('file')
+
+        for model_name in g.ALLOWED_MODELS_GENSIM:
+            modelResearcher.load(g.MODELS_GENSIM_PATH + model_name, model_name,  model_type="gensim")
+        for model_name in g.ALLOWED_MODELS_TRANSFORMER:
+            modelResearcher.load(g.MODELS_TRANSFORMER_PATH + model_name, model_name, model_type="transformer")
+
+        res = modelResearcher.get_roc_auc(df, field_1="text_rp", field_2="text_proj")
+        return res
 
 
     @app.route("/api/docs/get-list-of-allowed-models", methods=['GET'])
