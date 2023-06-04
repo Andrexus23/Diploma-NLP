@@ -103,6 +103,28 @@
         }
       }
     },
+    "/get-image/{imageName}": {
+      "get": {
+        "tags": [
+          "Get image by its name"
+        ],
+        "description": "Get image by its name",
+         "parameters": [{
+          "name": "imageName",
+          "in": "path",
+          "description": "image name",
+          "required": true,
+          "schema": {
+              "type": "string"
+            }
+        }],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
     "/match2texts/{modelId}": {
       "post": {
         "tags": [
@@ -224,7 +246,7 @@
           }
         },
         "responses": {
-          "200": {
+         "200": {
             "description": "Success"
           }
         }

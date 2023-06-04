@@ -2,6 +2,8 @@ import logging
 import sys
 import time
 import traceback
+
+import flask
 import pymorphy2
 import sklearn.utils
 from flask import Flask, jsonify, request, g
@@ -52,6 +54,13 @@ with app.app_context():
             return {"Success": "File's been successfully uploaded"}
         return {"Error": "Couldn't load file"}
 
+    @app.route("/api/docs/get-image/<string:name>", methods=['GET'])
+    def get_image(name):
+        try:
+            res = flask.send_file(path_or_file=MR.image_path + name, mimetype="image/png")
+            return res
+        except FileNotFoundError:
+            return {"Error": "No such image"}
 
     @app.route("/api/docs/train/<string:name>", methods=['GET'])
     def train_model(name):
@@ -118,7 +127,6 @@ with app.app_context():
 
             if sim < 0:
                 sim = 0.0
-            print(sim)
             return jsonify({"Texts' similarity": str(sim)})
         except Exception as e:
             logging.error(traceback.format_exc())
@@ -194,8 +202,6 @@ with app.app_context():
         dataset.close()
         try:
             df = pd.read_json(filename)
-            df = sklearn.utils.shuffle(df)
-            df = df.reset_index().drop(labels='index', axis=1)
             if name in g.ALLOWED_MODELS_GENSIM:
                 df = modelResearcher.preprocess_and_save_pairs(df, 'text_rp', 'text_proj')
                 res = modelResearcher.maximize_f1_score_loo(df["preprocessed_text_rp"], df["preprocessed_text_proj"],
@@ -232,14 +238,10 @@ with app.app_context():
 
         if not exists:
             return {"Error": "No model: you should train or download it"}
-        dataset = request.files['file']
-        filename = g.UPLOADED + "/" + dataset.filename
-        dataset.save(filename)
-        dataset.close()
         res = None
 
         try:
-            df = pd.read_json(filename)
+            df = get_df('file')
             df_train_f1, df_test_f1 = modelResearcher.get_train_test_dfs_for_f1(df)
             if name in g.ALLOWED_MODELS_GENSIM:
                 df_train_f1 = modelResearcher.preprocess_and_save_pairs(df_train_f1, 'text_rp', 'text_proj')
@@ -262,7 +264,6 @@ with app.app_context():
         except Exception as e:
             logging.error(traceback.format_exc())
             return jsonify({"Error": "Something went wrong"})
-
 
     @app.route("/api/docs/match_texts_from_corpus/<string:name>", methods=['POST'])
     def match_two_texts_from_corpus(name):
@@ -299,9 +300,7 @@ with app.app_context():
                                                           field_1="text_rp",
                                                           field_2="text_proj")
         df.insert(loc=4, column='score', value=res)
-        print(res)
         return df.to_json(orient="records", force_ascii=False)
-
 
     def get_df(name):
         dataset = request.files[name]
@@ -323,7 +322,6 @@ with app.app_context():
 
         res = modelResearcher.get_roc_auc(df, field_1="text_rp", field_2="text_proj")
         return res
-
 
     @app.route("/api/docs/get-list-of-allowed-models", methods=['GET'])
     def get_list_models():

@@ -1,10 +1,13 @@
 import base64
 import json
 import pickle
+
+import flask
 import pandas as pd
 import pymorphy2
 import nltk
 import redis
+import sys
 import time
 from nltk.corpus import stopwords
 import gensim
@@ -25,7 +28,7 @@ import sentence_transformers
 
 fontsize = 18
 plt.rcParams.update({'font.size': fontsize})
-plt.rcParams['figure.dpi'] = 400
+plt.rcParams['figure.dpi'] = 300
 punctuation_marks = ['!', ',', '(', ')', ';', ':', '-', '?', '.', '..', '...', "\"", "/", "\`\`", "»", "«"]
 stop_words = stopwords.words("russian")
 morph = pymorphy2.MorphAnalyzer()
@@ -33,7 +36,7 @@ model_types = []
 redis_port = 0
 redis_host = '-'
 line_thickness = 3
-
+image_path = sys.path[0].replace('\\', '/').replace('src', 'images/')
 
 class ModelResearcher:
     def __init__(self):
@@ -161,29 +164,27 @@ class ModelResearcher:
                     sim += [self.predict_transfomer_two_texts(sentences_1[i], sentences_2[i], model_name=model_name)]
 
             steps, thresholds, f1_score, cutoff = Common.max_f1_score(sim, df, step=0.02)
-
-            print(f'usual f1-score: {f1_score}')
-
             fig = plt.figure(figsize=(7, 6))
             plt.grid(True)
+            if model_name == "paraphrase-multilingual-MiniLM-L12-v2":
+                model_name = "multilingual"
             plt.title(f"Basic maximization: {model_name}")
             plt.xlabel("Cutoff", fontsize=fontsize)
             plt.ylabel("F1-score", fontsize=fontsize)
-            plt.plot(steps, thresholds)
-            plt.plot(cutoff, f1_score, "r*")
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png')
-            encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
-            image_url = f"data:image/png;base64,{encoded_img}"
-
+            plt.plot(steps, thresholds, label="F1-score(cutoff)", linewidth=line_thickness)
+            plt.plot(cutoff, f1_score, "r*", label="Max F1-score" )
+            plt.legend(loc="best")
+            imname = "Maximization-F1-score-" + model_name + ".png"
+            plt.savefig(image_path + imname)
             res = {}
+            preds = [sim[i] >= cutoff for i in range(len(df))]
             metrics = Common.calc_all(sim, df, cutoff)
             res.setdefault("cutoff", cutoff)
             res.setdefault("f1-score", metrics["f1-score"])
             res.setdefault("precision", metrics["precision"])
             res.setdefault("recall", metrics["recall"])
-            res.setdefault("image", image_url)
-
+            res.setdefault("sim", str(preds))
+            res.setdefault("image", imname)
             return res
 
     def maximize_f1_score_loo(self, sentences_1: pd.Series, sentences_2: pd.Series, df, model_name, model_type,
@@ -222,18 +223,20 @@ class ModelResearcher:
             res = {}
             metrics = Common.calc_all_loo(lambda: Common.get_states_loo(predictions, df))
             metrics_from_cutoff = Common.calc_all(sim, df, cutoff_mean)
+            preds = [sim[i] >= cutoff_mean for i in range(len(df))]
             res.setdefault("1_cutoff_mean", cutoff_mean)
             res.setdefault("1_f1-score_cutoff", metrics_from_cutoff["f1-score"])
             res.setdefault("1_precision_cutoff", metrics_from_cutoff["precision"])
             res.setdefault("1_recall_cutoff", metrics_from_cutoff["recall"])
+            res.setdefault("1_sim (cutoff)", str(preds))
             res.setdefault("2_f1-score_loo", metrics["f1-score"])
             res.setdefault("2_precision_loo", metrics["precision"])
             res.setdefault("2_recall_loo", metrics["recall"])
+
             return res
 
     def maximize_f1_score_train_test(self, df_train, df_test, model_name, model_type, field_1, field_2,
                                      step=0.02):
-
         steps = np.linspace(0, 1, num=int(1 / step))
         steps = np.round(steps, 2)
         sim_train = []
@@ -267,13 +270,12 @@ class ModelResearcher:
         plt.title("Train dataset: " + model_name, fontsize=fontsize)
         plt.xlabel("Cutoff", fontsize=fontsize)
         plt.ylabel("F1-score", fontsize=fontsize)
-        plt.plot(steps, thresholds)
-        plt.plot(cutoff, f1_score_train, 'r*')
+        plt.plot(steps, thresholds, linewidth=line_thickness, label="F1-score(cutoff)")
+        plt.plot(cutoff, f1_score_train, 'r*', label="Max F1-score")
         plt.annotate(f'({cutoff}, {f1_score_train})', (cutoff - 0.06, f1_score_train + 0.01), fontsize=fontsize - 6)
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
-        image_url = f"data:image/png;base64,{encoded_img}"
+        plt.legend(loc="best")
+        imname = "Maximization-F1-score-train-" + model_name + ".png"
+        plt.savefig(image_path + imname)
         res = {}
         res.setdefault("1_cutoff_train", cutoff)
         res.setdefault("1_f1-score_train", metrics_train["f1-score"])
@@ -282,8 +284,7 @@ class ModelResearcher:
         res.setdefault("2_f1-score_test", metrics_test["f1-score"])
         res.setdefault("2_precision_test", metrics_test["precision"])
         res.setdefault("2_recall_test", metrics_test["recall"])
-        res.setdefault("image", image_url)
-
+        res.setdefault("2_image", imname)
         return res
 
     def get_roc_auc(self, df, field_1, field_2, step=0.02):
@@ -296,6 +297,7 @@ class ModelResearcher:
         plt.xlabel('False Positive Rate')
         plt.ylabel('True Positive Rate')
         plt.title('ROC-AUC')
+        res = {}
 
         for model in self.models.items():
             self.model = model[1][0]
@@ -309,19 +311,18 @@ class ModelResearcher:
                                                    field_2=field_2)
             steps, tprs, fprs, cutoff = Common.max_diff_tpr_fpr(sim, df)
             roc_auc = auc(fprs, tprs)
+            preds = [sim[i] >= cutoff for i in range(len(df))]
+            res.setdefault(str(model[1][1]), {"AUC": round(roc_auc, 3), "cutoff": cutoff, "sim": str(preds)})
             if model[1][1] == "paraphrase-multilingual-MiniLM-L12-v2":
                 model[1][1] = "multilingual"
-            plt.plot(fprs, tprs, color=colors.pop(), linewidth=line_thickness,
-                     label=f'ROC {model[1][1]} (area = {round(roc_auc, 2)}, cutoff = {cutoff})')
-            plt.plot([0, 1], [0, 1], color='navy', linestyle='--', linewidth=line_thickness)
 
-        res = {}
+            plt.plot(fprs, tprs, color=colors.pop(), linewidth=line_thickness,
+                     label=f'ROC {model[1][1]} (area = {round(roc_auc, 3)}, cutoff = {cutoff})')
+            plt.plot([0, 1], [0, 1], color='navy', linestyle='--', linewidth=line_thickness)
         plt.legend(loc="best")
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        encoded_img = base64.b64encode(buf.getbuffer()).decode("ascii")
-        image_url = f"data:image/png;base64,{encoded_img}"
-        res.setdefault("image", image_url)
+        imname = "ROC-AUC" + ".png"
+        plt.savefig(image_path + imname)
+        res.setdefault("image", imname)
         return res
 
     def match_texts_from_corpus(self, df, model_name, model_type, field_1, field_2):
