@@ -3,8 +3,7 @@ services:
   redis:
     container_name: redis
     build:
-      context: .
-      dockerfile: docker/redis/Dockerfile
+      dockerfile: redis/Dockerfile
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -12,16 +11,19 @@ services:
       - "6379:6379"
   flask:
     container_name: flask
-    build:
-      context: .
-      dockerfile: docker/flask/Dockerfile
+    build: ./service
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=True
       - PYTHONUNBUFFERED=True
+    volumes:
+        - ./models:/models
+        - ./files:/files
+        - ./uploaded:/uploaded
+        - ./images:/images
     ports:
       - "5000:5000"
-    command: python src/main.py src/config.ini
+    command: python src/main.py config.ini
     links:
       - redis
 
